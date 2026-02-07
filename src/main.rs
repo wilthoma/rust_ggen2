@@ -6,6 +6,7 @@ mod graphs;
 // mod bliss_interface;
 // use nauty_interface2::*;
 // use bliss_interface::*;
+mod densegraph;
 use graphs::*;
 // use kneissler::*;
 use clap::{Command, Arg};

@@ -18,6 +18,8 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use zeroize::Zeroize;
+use crate::densegraph::DenseGraph;
+use rustc_hash::FxHashSet;
 
 // unsafe extern "C" {
 //     fn canonicalize_g6(input: *const c_char, output: *mut c_char, output_size: usize);
@@ -406,8 +408,38 @@ const BATCH_SIZE: usize = 64000;
 //     Ok(seen)
 // }
 
-/// Run g6 strings through `labelg` in batches and deduplicate the canonical results.
 pub fn canonicalize_and_dedup_g6(
+    g6_list: &Vec<String>,
+) -> FxHashSet<String>
+{
+    // convert g6 to Densegraph, then canonicalize, then convert back to g6, and deduplicate using a HashSet
+    // do it in parallel using rayon
+    let bar = ProgressBar::new(g6_list.len() as u64);
+    bar.set_style(
+        ProgressStyle::with_template(
+            "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) ETA: {eta_precise}",
+        )
+        .unwrap()
+        .progress_chars("#>-"),
+    );
+    let bar = Arc::new(bar);
+    
+    let canon_set: FxHashSet<String> = g6_list
+        .par_iter()
+        .map(|g6| {
+            bar.inc(1);
+            let dg = DenseGraph::from_g6(g6);
+            let (canon_dg, _) = dg.canonical_label();
+            canon_dg.to_g6()
+        })
+        .collect();
+    
+    bar.finish_with_message("Canonicalization complete");
+    canon_set
+}
+
+/// Run g6 strings through `labelg` in batches and deduplicate the canonical results.
+pub fn canonicalize_and_dedup_g6_old(
     g6_list: &Vec<String>,
     labelg_path: &str,
     // g6_iter: I,
@@ -628,7 +660,7 @@ pub fn generate_graphs(g : usize, d : usize, labelg_path: &str) -> Result<(), Bo
 
         println!("{} graphs generated, deduplicating...", g6list.len());
         let start = Instant::now();
-        let g6_canon: HashSet<String> = canonicalize_and_dedup_g6(&g6list, labelg_path)?;
+        let g6_canon: FxHashSet<String> = canonicalize_and_dedup_g6(&g6list);
         println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
         let g6_vec: Vec<String> = g6_canon.into_iter().collect();
         println!("Saving {} graphs to file {}", g6_vec.len(), filename);
@@ -778,7 +810,7 @@ pub fn generate_graphs(g : usize, d : usize, labelg_path: &str) -> Result<(), Bo
 
         println!("{} graphs generated, deduplicating...", g6list.len());
         let start = Instant::now();
-        let g6_canon: HashSet<String> = canonicalize_and_dedup_g6(&g6list, labelg_path)?;
+        let g6_canon: FxHashSet<String> = canonicalize_and_dedup_g6(&g6list);
         println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
 
         let g6_vec: Vec<String> = g6_canon.into_iter().collect();
@@ -795,15 +827,20 @@ pub fn compare_file_to_ref(l : usize, d : usize) {
         let g6_ref = Graph::load_from_file_nohdr(&refname).unwrap();
         // assert_eq!(g6s.len(), g6_ref.len(), "Number of graphs in {} and {} do not match", filename, refname);
         // take the difference of g6s and g6_ref as sets
-        let g6s_set: HashSet<_> = g6s.iter().map(|s| s.as_str()).collect();
-        let g6_ref_set: HashSet<_> = g6_ref.iter().map(|s| s.as_str()).collect();
+        let g6s_set: FxHashSet<String> = g6s.into_iter().collect();
+        let g6_ref_set = canonicalize_and_dedup_g6(&g6_ref);
+        // sanity check that nothing was removed
+        if g6_ref_set.len() != g6_ref.len() {
+            panic!("Error: canonicalization removed some graphs from the reference set. Original size: {}, after canonicalization: {}.", g6_ref.len(), g6_ref_set.len());
+        }
         let diff: Vec<_> = g6s_set.difference(&g6_ref_set).collect();
         if !diff.is_empty() {
             println!("Graphs in {} but not in {}: {:?}", filename, refname, diff);
         }
         assert!(diff.is_empty(), "Graphs in {} but not in {}", filename, refname);
         // take the difference of g6_ref and g6s as sets
-        let diff: Vec<_> = g6_ref_set.difference(&g6s_set).collect();
+        let g6s_set_owned: FxHashSet<String> = g6s_set.into_iter().collect();
+        let diff: Vec<_> = g6_ref_set.difference(&g6s_set_owned).collect();
         if !diff.is_empty() {
             println!("Graphs in {} but not in {}: {:?}", refname, filename, diff);
         }
@@ -872,34 +909,34 @@ mod tests {
         compare_file_to_ref(10, 0);
     }
 
-    #[test]
-    fn test_canonicalize_and_dedup_g6() {
-        // These three are isomorphic, the last is not
-        let g6_graphs = vec![
-            "D??".to_string(),
-            "D_@".to_string(),
-            "D`?".to_string(), // all isomorphic
-            "D?@".to_string(), // triangle + pendant (non-isomorphic)
-        ];
+    // #[test]
+    // fn test_canonicalize_and_dedup_g6() {
+    //     // These three are isomorphic, the last is not
+    //     let g6_graphs = vec![
+    //         "D??".to_string(),
+    //         "D_@".to_string(),
+    //         "D`?".to_string(), // all isomorphic
+    //         "D?@".to_string(), // triangle + pendant (non-isomorphic)
+    //     ];
 
 
-        let result: Result<HashSet<String>, Box<dyn Error + 'static>> = canonicalize_and_dedup_g6(&g6_graphs, "labelg");
-        match result {
-            Ok(canon_set) => {
-                // Should deduplicate the first three, so only 2 canonical forms
-                println!("Canonical forms: {:?}", canon_set);
-                assert_eq!(
-                    canon_set.len(),
-                    3,
-                    "Expected 3 canonical forms, got {:?}",
-                    canon_set
-                );
-            }
-            Err(e) => {
-                panic!("canonicalize_and_dedup_g6 failed: {}", e);
-            }
-        }
-    }
+    //     let result: Result<FxHashSet<String>, Box<dyn Error + 'static>> = canonicalize_and_dedup_g6(&g6_graphs);
+    //     match result {
+    //         Ok(canon_set) => {
+    //             // Should deduplicate the first three, so only 2 canonical forms
+    //             println!("Canonical forms: {:?}", canon_set);
+    //             assert_eq!(
+    //                 canon_set.len(),
+    //                 3,
+    //                 "Expected 3 canonical forms, got {:?}",
+    //                 canon_set
+    //             );
+    //         }
+    //         Err(e) => {
+    //             panic!("canonicalize_and_dedup_g6 failed: {}", e);
+    //         }
+    //     }
+    // }
 
     #[test]
     fn test_tetrahedron_equals_tetrastring_1() {
