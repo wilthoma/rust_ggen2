@@ -39,7 +39,7 @@ impl DenseGraph {
         }
         DenseGraph {
             num_vertices,
-            edges,
+            edges: edges,
             adj,
         }
     }

@@ -345,6 +345,10 @@ impl Graph {
             println!("{} {}", u, v);
         }
     }
+
+    pub fn to_densegraph(&self) -> DenseGraph {
+        DenseGraph::new(self.num_vertices, self.edges.clone())
+    }
 }
 
 
@@ -592,7 +596,7 @@ pub fn generate_graphs(g : usize, d : usize, labelg_path: &str) -> Result<(), Bo
         );
         // let counter = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
-        let g6list: Vec<String> = g6s
+        let g6_set: FxHashSet<String> = g6s
             .par_iter()
             .map_init(
                 || bar.clone(),
@@ -604,11 +608,17 @@ pub fn generate_graphs(g : usize, d : usize, labelg_path: &str) -> Result<(), Bo
             .flat_map_iter(|g| {
                 (0..=e)
                     .filter_map(move |idx| g.contract_edge_opt(idx))
-                    .map(|g| g.to_g6())
+                    .map(|g| 
+                        // Convert to densegraph and canonize
+                        {
+                            let dg = g.to_densegraph();
+                            let (canon_dg, _) = dg.canonical_label();
+                            canon_dg.to_g6()
+                        })
             })
             .collect();
 
-        bar.finish();
+        // bar.finish();
         // let g6list: Vec<String> = g6s
         //     .par_iter()
         //     .map(|s| Graph::from_g6(s))
@@ -652,17 +662,17 @@ pub fn generate_graphs(g : usize, d : usize, labelg_path: &str) -> Result<(), Bo
         let msg = format!(
             "Done in {:.2?} — total graphs: {}",
             start.elapsed(),
-            g6list.len()
+            g6_set.len()
         );
         bar.finish_with_message(msg);
 
 
 
-        println!("{} graphs generated, deduplicating...", g6list.len());
-        let start = Instant::now();
-        let g6_canon: FxHashSet<String> = canonicalize_and_dedup_g6(&g6list);
-        println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
-        let g6_vec: Vec<String> = g6_canon.into_iter().collect();
+        // println!("{} graphs generated, deduplicating...", g6list.len());
+        // let start = Instant::now();
+        // let g6_canon: FxHashSet<String> = canonicalize_and_dedup_g6(&g6list);
+        // println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
+        let g6_vec: Vec<String> = g6_set.into_iter().collect();
         println!("Saving {} graphs to file {}", g6_vec.len(), filename);
         Graph::save_to_file(&g6_vec, &filename)?;
         println!("Done.");
