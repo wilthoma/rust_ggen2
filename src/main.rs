@@ -7,6 +7,7 @@ mod graphs;
 // use nauty_interface2::*;
 // use bliss_interface::*;
 mod densegraph;
+mod gc_graph;
 use graphs::*;
 // use kneissler::*;
 use clap::{Command, Arg};

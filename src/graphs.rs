@@ -349,6 +349,8 @@ impl Graph {
     pub fn to_densegraph(&self) -> DenseGraph {
         DenseGraph::new(self.num_vertices, self.edges.clone())
     }
+
+    
 }
 
 
