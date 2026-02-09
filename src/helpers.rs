@@ -223,11 +223,15 @@ pub fn save_matrix_to_sms_file(matrix_rows: &Vec<FxHashMap<usize, i32>>, ncols: 
 pub fn get_progress_bar(total: usize) -> ProgressBar {
 let bar = ProgressBar::new(total as u64);
     bar.set_style(
-        ProgressStyle::with_template(
-            "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) Elapsed: {elapsed_precise} Remaining: {eta_precise}",
-        )
-        .unwrap()
-        .progress_chars("#>-"),
+        get_progress_bar_style()
     );
     bar
+}
+
+pub fn get_progress_bar_style() -> ProgressStyle {
+    ProgressStyle::with_template(
+        "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) Elapsed: {elapsed_precise} Remaining: {eta_precise}",
+    )
+    .unwrap()
+    .progress_chars("#>-")
 }

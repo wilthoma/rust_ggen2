@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use indicatif::ProgressBar;
+use indicatif::{ParallelProgressIterator, ProgressBar};
 use std::io::Write;
 use crate::densegraph::DenseGraph;
 use rustc_hash::FxHashMap;
@@ -176,46 +176,46 @@ impl Graph {
         }
     }
 
-    fn load_from_file(filename: &str) -> Result<Vec<String>, std::io::Error> {
+    // fn load_from_file(filename: &str) -> Result<Vec<String>, std::io::Error> {
         
-        let file = File::open(filename)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for reading"))?;
-        let mut reader = BufReader::new(file);
+    //     let file = File::open(filename)
+    //         .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for reading"))?;
+    //     let mut reader = BufReader::new(file);
         
-        let mut first_line = String::new();
-        reader.read_line(&mut first_line)?;
-        let num_graphs: usize = first_line.trim().parse()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid number in first line"))?;
+    //     let mut first_line = String::new();
+    //     reader.read_line(&mut first_line)?;
+    //     let num_graphs: usize = first_line.trim().parse()
+    //         .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid number in first line"))?;
         
-        let mut g6_list = Vec::new();
-        for line in reader.lines() {
-            let line = line?;
-            if !line.is_empty() {
-                g6_list.push(line);
-            }
-        }
+    //     let mut g6_list = Vec::new();
+    //     for line in reader.lines() {
+    //         let line = line?;
+    //         if !line.is_empty() {
+    //             g6_list.push(line);
+    //         }
+    //     }
         
-        if g6_list.len() != num_graphs {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Number of graphs does not match"));
-        }
+    //     if g6_list.len() != num_graphs {
+    //         return Err(std::io::Error::new(std::io::ErrorKind::Other, "Number of graphs does not match"));
+    //     }
         
-        Ok(g6_list)
-    }
+    //     Ok(g6_list)
+    // }
 
-    fn load_from_file_nohdr(filename: &str) -> Result<Vec<String>, std::io::Error> {
+    // fn load_from_file_nohdr(filename: &str) -> Result<Vec<String>, std::io::Error> {
         
-        let file = File::open(filename)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for reading"))?;
-        let reader = BufReader::new(file);
+    //     let file = File::open(filename)
+    //         .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for reading"))?;
+    //     let reader = BufReader::new(file);
         
-        let g6_list = reader.lines()
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|line| !line.is_empty())
-            .collect();
+    //     let g6_list = reader.lines()
+    //         .collect::<Result<Vec<_>, _>>()?
+    //         .into_iter()
+    //         .filter(|line| !line.is_empty())
+    //         .collect();
         
-        Ok(g6_list)
-    }
+    //     Ok(g6_list)
+    // }
 
 
     fn contract_edge(&self, eidx: usize) -> Graph {
@@ -610,7 +610,7 @@ impl OrdinaryGVS {
         if !self.is_valid() {
             return Ok(Vec::new());
         }
-        Graph::load_from_file(&self.get_basis_file_path())
+        load_g6_file(&self.get_basis_file_path())
     }
 
     pub fn build_basis(&self, ignore_existing_files: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -625,7 +625,7 @@ impl OrdinaryGVS {
         }
 
         let infile = self.get_input_file_path();
-        let in_g6s = Graph::load_from_file(&infile)?;
+        let in_g6s = load_g6_file(&infile)?;
         let num_graphs = in_g6s.len();
 
         if in_g6s.is_empty() {
@@ -635,13 +635,10 @@ impl OrdinaryGVS {
 
         println!("Building basis for {}", basis_path);
 
-        let bar = ProgressBar::new(num_graphs as u64);
-        bar.set_style(indicatif::ProgressStyle::default_bar()
-            .template("[{bar:50.cyan/blue}] {pos}/{len} {elapsed_precise} remaining {eta} {msg}")
-            .unwrap()
-            .progress_chars("=>-"));
+        // let bar = get_progress_bar(num_graphs);
 
         let mut out_g6s: Vec<String> = in_g6s.par_iter()
+            .progress_with_style(get_progress_bar_style())
             .filter_map(|g6| {
                 let g = Graph::from_g6(g6);
                 let keep = (self.use_triconnected && g.is_triconnected()) || 
@@ -655,8 +652,6 @@ impl OrdinaryGVS {
 
         // sort the list of g6 strings to have a canonical order in the basis
         out_g6s.sort();
-
-        bar.finish();
 
         println!("Found {} graphs in the basis. Writing to {}...", out_g6s.len(), basis_path);
         Graph::save_to_file(&out_g6s, &basis_path)?;
@@ -779,9 +774,10 @@ impl OrdinaryContract {
         println!("Number of output basis elements: {}", num_cols);
         println!("Contracting....");
 
-        let bar = get_progress_bar(num_rows);
+        // let bar = get_progress_bar(num_rows);
 
         let matrix_rows: Vec<FxHashMap<usize, i32>> = in_basis.par_iter()
+            .progress_with_style(get_progress_bar_style())
             .map(|g6| {
                 let mut local: FxHashMap<usize, i32> = FxHashMap::default();
                 let g = Graph::from_g6(g6);
@@ -796,7 +792,6 @@ impl OrdinaryContract {
                     }
                 }
 
-                bar.inc(1);
                 local
             })
             .collect();
@@ -812,7 +807,7 @@ impl OrdinaryContract {
         //         matrix.insert(k, v);
         //     }
         // }
-        bar.finish();
+        // bar.finish();
 
         println!("Saving matrix to file: {}", matrix_path);
         save_matrix_to_sms_file(&matrix_rows, num_cols, &matrix_path)?;

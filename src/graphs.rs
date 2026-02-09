@@ -9,7 +9,7 @@ use std::error::Error;
 use std::thread;
 use std::time::Instant;
 use rayon::prelude::*;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -548,19 +548,21 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         let otherfilename = format!("data/graphs{}_{}.g6", g, d-1);
         let mut g6s = load_g6_file(&otherfilename)?;
         let total = g6s.len();
-        let bar = get_progress_bar(total);
+        // let bar = get_progress_bar(total);
         // let counter = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         let g6_set: FxHashSet<String> = g6s
             .par_iter()
-            .map_init(
-                || bar.clone(),
-                |bar, s| {
-                    bar.inc(1);
-                    Graph::from_g6(s)
-                },
-            )
-            .flat_map_iter(|g| {
+            // .map_init(
+            //     || bar.clone(),
+            //     |bar, s| {
+            //         bar.inc(1);
+            //         Graph::from_g6(s)
+            //     },
+            // )
+            .progress_with_style(get_progress_bar_style())
+            .flat_map_iter(|gs| {
+                let g = Graph::from_g6(gs);
                 (0..=e)
                     .filter_map(move |idx| g.contract_edge_opt(idx))
                     .map(|g| 
@@ -619,7 +621,8 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
             start.elapsed(),
             g6_set.len()
         );
-        bar.finish_with_message(msg);
+        println!("{}", msg);
+        // bar.finish_with_message(msg);
 
 
 
@@ -703,10 +706,11 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
             let ee = e-3;
             
             let total = g6s.len();
-            let bar2 = get_progress_bar(total);
+            // let bar2 = get_progress_bar(total);
 
             let new_g6s: Vec<String> = g6s
                 .par_iter()
+                .progress_with_style(get_progress_bar_style())
                 .enumerate()
                 .flat_map_iter(|(_id, s)| {
                     let gg = Graph::from_g6(s);
@@ -718,12 +722,12 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
                         }
                     }
                     // Update progress bar for this chunk
-                    bar2.inc(1);
+                    // bar2.inc(1);
                     local_vec
                 })
                 .collect();
 
-            bar2.finish_with_message("Done.");
+            // bar2.finish_with_message("Done.");
             // let new_g6s: Vec<String> = g6s
             //     .par_iter()
             //     .enumerate()
