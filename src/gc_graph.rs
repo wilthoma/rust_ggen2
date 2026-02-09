@@ -506,18 +506,6 @@ impl Graph {
         false
     }
 
-    fn save_to_file(g6_list: &[String], filename: &str) -> std::io::Result<()> {
-        ensure_folder_of_filename_exists(filename)?;
-        let file = std::fs::File::create(filename)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for writing"))?;
-        let mut writer = std::io::BufWriter::new(file);
-        writeln!(writer, "{}", g6_list.len())?;
-        for g6 in g6_list {
-            writeln!(writer, "{}", g6)?;
-        }
-        Ok(())
-    }
-
     fn to_canon_g6(&self) -> String {
         let dg = self.to_densegraph();
         let (canon, _) = dg.canonical_label();
@@ -654,7 +642,7 @@ impl OrdinaryGVS {
         out_g6s.sort();
 
         println!("Found {} graphs in the basis. Writing to {}...", out_g6s.len(), basis_path);
-        Graph::save_to_file(&out_g6s, &basis_path)?;
+        save_g6_file(&out_g6s, &basis_path)?;
 
         println!("Done.");
 

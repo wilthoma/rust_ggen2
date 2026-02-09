@@ -97,6 +97,29 @@ pub fn load_g6_file_nohdr(filename: &str) -> std::io::Result<Vec<String>> {
     Ok(g6_list)
 }
 
+pub fn save_g6_file(g6_list: &[String], filename: &str) -> std::io::Result<()> {
+    println!("Saving g6 file: {}...", filename);
+    ensure_folder_of_filename_exists(filename)?;
+    let file = std::fs::File::create(filename)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for writing"))?;
+    let mut writer = std::io::BufWriter::new(file);
+    writeln!(writer, "{}", g6_list.len())?;
+    let pb : Option<ProgressBar> = if g6_list.len() > 1000000 {
+        Some(get_progress_bar(g6_list.len()))
+    } else {
+        None
+    };
+    for g6 in g6_list {
+        writeln!(writer, "{}", g6)?;
+        if let Some(ref bar) = pb {
+            bar.inc(1);
+        }
+    }
+    if let Some(ref bar) = pb {
+        bar.finish();
+    }
+    Ok(())
+}
 
 pub fn make_basis_dict(basis: &[String]) -> FxHashMap<String, usize> {
     basis.iter().enumerate()
