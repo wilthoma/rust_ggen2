@@ -779,11 +779,7 @@ impl OrdinaryContract {
         println!("Number of output basis elements: {}", num_cols);
         println!("Contracting....");
 
-        let bar = ProgressBar::new(num_rows as u64);
-        bar.set_style(indicatif::ProgressStyle::default_bar()
-            .template("[{bar:50.cyan/blue}] {pos}/{len} {elapsed_precise} remaining {eta} {msg}")
-            .unwrap()
-            .progress_chars("=>-"));
+        let bar = get_progress_bar(num_rows);
 
         let matrix_rows: Vec<FxHashMap<usize, i32>> = in_basis.par_iter()
             .map(|g6| {
