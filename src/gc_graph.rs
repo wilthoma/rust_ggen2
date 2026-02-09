@@ -981,7 +981,7 @@ pub fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: boo
     }
     
     // Check whether entries are the same
-    ref_g6s.sort();
+    ref_g6s.par_sort();
     let g6s_set: std::collections::HashSet<_> = g6s.into_iter().collect();
     let ref_g6s_set: std::collections::HashSet<_> = ref_g6s.iter().cloned().collect();
     
