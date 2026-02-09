@@ -21,6 +21,8 @@ use zeroize::Zeroize;
 use crate::densegraph::DenseGraph;
 use rustc_hash::FxHashSet;
 
+use crate::gc_graph::Graph as GCGraph;
+
 // unsafe extern "C" {
 //     fn canonicalize_g6(input: *const c_char, output: *mut c_char, output_size: usize);
 // }
@@ -565,7 +567,7 @@ pub fn is_satisfiable(g: usize, d: usize) -> bool {
     true
 }
 
-pub fn generate_graphs(g : usize, d : usize, labelg_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::Error>> {
     // d is the defect
     println!("Generating graphs with genus {} and defect {}...", g, d);
 
