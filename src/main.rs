@@ -86,6 +86,7 @@ fn main() {
         )
         .arg(
             Arg::new("3")
+                .short('3')
                 .long("triconnected")
                 .required(false)
                 .help("Generate only triconnected graphs.")
