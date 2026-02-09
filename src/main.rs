@@ -40,11 +40,18 @@ fn main() {
                 .index(3),
         )
         .arg(
-            Arg::new("defect")
-                .help("The defect d. The number of edges is =3(loops)-3-d.")
+            Arg::new("min_defect")
+                .help("The minimum defect d. The number of edges is =3(loops)-3-d.")
                 .value_parser(clap::value_parser!(usize))
                 .required(true)
                 .index(4),
+        )
+        .arg(
+            Arg::new("max_defect")
+                .help("The maximum defect d. The number of edges is =3(loops)-3-d.")
+                .value_parser(clap::value_parser!(usize))
+                .required(true)
+                .index(5),
         )
         .arg(
             Arg::new("overwrite")
@@ -63,6 +70,7 @@ fn main() {
         )
         .arg(
             Arg::new("M")
+                .short('M')
                 .long("matrices")
                 .required(false)
                 .help("Generate or test matrix files")
@@ -120,7 +128,8 @@ fn main() {
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
     let n_loops_min: usize = *matches.get_one::<usize>("min_loops").expect("Invalid number of min loops");
     let n_loops_max: usize = *matches.get_one::<usize>("max_loops").expect("Invalid number of max loops");
-    let n_defect = *matches.get_one::<usize>("defect").expect("Invalid defect");
+    let n_defect_min: usize = *matches.get_one::<usize>("min_defect").expect("Invalid number of min defect");
+    let n_defect_max: usize = *matches.get_one::<usize>("max_defect").expect("Invalid number of max defect");
     let geng_path = matches.get_one::<String>("geng").map(|s| s.as_str()).unwrap();
 
     if num_threads > 0 {
@@ -132,63 +141,64 @@ fn main() {
 
 
     for n_loops in n_loops_min..=n_loops_max {
-        if !is_satisfiable(n_loops, n_defect) {
-            continue;
-        }
-        if mode == "plain" {
-            if gen_ref {
-                let start = std::time::Instant::now();
-                println!("Generating reference file for {} loops and defect {}", n_loops, n_defect);
-                create_geng_ref(n_loops, n_defect);
-                let duration = start.elapsed();
-                println!("Time elapsed: {:?}", duration);
+        for n_defect in n_defect_min..=n_defect_max {
+            if !is_satisfiable(n_loops, n_defect) {
+                continue;
             }
-
-            if test {
-                compare_file_to_ref(n_loops, n_defect);
-            }
-
-            if !gen_ref && !nobuild && !test{
-                let start = std::time::Instant::now();
-                println!("Generating graphs for {} loops and defect {}", n_loops, n_defect);
-                generate_graphs(n_loops, n_defect).unwrap();
-                let duration = start.elapsed();
-                println!("Time elapsed: {:?}", duration);
-            }
-
-        } else { // mode == "even" or "odd"
-            let even_edges = mode == "even";
-            let n_vertices = 2 * n_loops - 2 - n_defect;
-            if gen_ref {
-                panic!("Reference file generation is only supported in plain mode.");
-            }
-            let OGC = OrdinaryGVS::new(n_vertices as u8, n_loops as u8,even_edges, use_triconnected);
-            let Op = OrdinaryContract::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
-            let start = std::time::Instant::now();
-
-            if test {
-                if gen_matrices {
-                    println!("Testing matrix files against reference for {} loops and defect {}", n_loops, n_defect);
-                    Op.test_matrix_vs_ref().expect("Matrix test failed");
-                } else {
-                    println!("Testing basis files against reference for {} loops and defect {}", n_loops, n_defect);
-                    OGC.test_basis_vs_ref().expect("Basis test failed");
+            if mode == "plain" {
+                if gen_ref {
+                    let start = std::time::Instant::now();
+                    println!("Generating reference file for {} loops and defect {}", n_loops, n_defect);
+                    create_geng_ref(n_loops, n_defect);
+                    let duration = start.elapsed();
+                    println!("Time elapsed: {:?}", duration);
                 }
 
-            } 
-
-            if !test {
-                if gen_matrices {
-                    println!("Generating matrix files for {} loops and defect {}", n_loops, n_defect);
-                    Op.build_matrix(overwrite).expect("Build matrix failed");
-                } else {
-                    println!("Generating basis files for {} loops and defect {}", n_loops, n_defect);
-                    OGC.build_basis(overwrite).expect("Build basis failed");
+                if test {
+                    compare_file_to_ref(n_loops, n_defect);
                 }
+
+                if !gen_ref && !nobuild && !test{
+                    let start = std::time::Instant::now();
+                    println!("Generating graphs for {} loops and defect {}", n_loops, n_defect);
+                    generate_graphs(n_loops, n_defect).unwrap();
+                    let duration = start.elapsed();
+                    println!("Time elapsed: {:?}", duration);
+                }
+
+            } else { // mode == "even" or "odd"
+                let even_edges = mode == "even";
+                let n_vertices = 2 * n_loops - 2 - n_defect;
+                if gen_ref {
+                    panic!("Reference file generation is only supported in plain mode.");
+                }
+                let OGC = OrdinaryGVS::new(n_vertices as u8, n_loops as u8,even_edges, use_triconnected);
+                let Op = OrdinaryContract::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
+                let start = std::time::Instant::now();
+
+                if test {
+                    if gen_matrices {
+                        println!("Testing matrix files against reference for {} loops and defect {}", n_loops, n_defect);
+                        Op.test_matrix_vs_ref().expect("Matrix test failed");
+                    } else {
+                        println!("Testing basis files against reference for {} loops and defect {}", n_loops, n_defect);
+                        OGC.test_basis_vs_ref().expect("Basis test failed");
+                    }
+
+                } 
+
+                if !test {
+                    if gen_matrices {
+                        println!("Generating matrix files for {} loops and defect {}", n_loops, n_defect);
+                        Op.build_matrix(overwrite).expect("Build matrix failed");
+                    } else {
+                        println!("Generating basis files for {} loops and defect {}", n_loops, n_defect);
+                        OGC.build_basis(overwrite).expect("Build basis failed");
+                    }
+                }
+
             }
-
         }
-
 
 
     }

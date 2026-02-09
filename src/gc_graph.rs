@@ -2,7 +2,9 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use indicatif::ProgressBar;
 use std::io::Write;
-
+use crate::densegraph::DenseGraph;
+use rustc_hash::FxHashMap;
+use rayon::prelude::*;
 
 fn permutation_sign<T: Ord>(p: &[T]) -> i32 {
     let mut sign = 1;
@@ -147,13 +149,13 @@ impl Graph {
         
         let first = g6.as_bytes()[0] as u8;
         if first < 63 {
-            panic!("Invalid graph6 string");
+            panic!("Invalid graph6 string: {}", g6);
         }
         
         let n = if first >= 63 && first <= 126 {
             first - 63
         } else {
-            panic!("Only supports n ≤ 62")
+            panic!("Only supports n ≤ 62: {}", g6);
         };
         
         let num_bits = (n as usize) * (n as usize - 1) / 2;
@@ -431,6 +433,11 @@ impl Graph {
         true
     }
 
+    pub fn to_densegraph(&self) -> DenseGraph {
+        let edges = self.edges.iter().map(|e| (e.u, e.v)).collect();
+        DenseGraph::new(self.num_vertices, edges)
+    }
+
     fn check_g6_valid(g6: &str, defect: usize, err_msg: &str) -> bool {
         let g = Graph::from_g6(g6);
         g.check_valid(defect, err_msg)
@@ -528,9 +535,42 @@ impl Graph {
     }
 
     fn has_odd_automorphism(&self, even_edges: bool) -> bool {
-        // Placeholder implementation
+        let dg = self.to_densegraph();
+        let auts = dg.automorphisms();
+        for p in auts {
+            let sign = self.perm_sign(&p, even_edges);
+            if sign == -1 {
+                return true;
+            }
+        }
         false
     }
+
+    fn save_to_file(g6_list: &[String], filename: &str) -> std::io::Result<()> {
+        ensure_folder_of_filename_exists(filename)?;
+        let file = std::fs::File::create(filename)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for writing"))?;
+        let mut writer = std::io::BufWriter::new(file);
+        writeln!(writer, "{}", g6_list.len())?;
+        for g6 in g6_list {
+            writeln!(writer, "{}", g6)?;
+        }
+        Ok(())
+    }
+
+    fn to_canon_g6(&self) -> String {
+        let dg = self.to_densegraph();
+        let (canon, _) = dg.canonical_label();
+        canon.to_g6()
+    }
+
+    fn to_canon_g6_sgn(&self, even_edges: bool) -> (String, i32) {
+        let dg = self.to_densegraph();
+        let (canon, perm) = dg.canonical_label();
+        let sign = self.perm_sign(&perm, even_edges);
+        (canon.to_g6(), sign)
+    }
+
 }
 
 fn get_type_string(even_edges: bool) -> String {
@@ -625,7 +665,7 @@ impl OrdinaryGVS {
         }
 
         let infile = self.get_input_file_path();
-        let in_g6s = Graph::load_from_file_nohdr(&infile)?;
+        let in_g6s = Graph::load_from_file(&infile)?;
         let num_graphs = in_g6s.len();
 
         if in_g6s.is_empty() {
@@ -637,24 +677,30 @@ impl OrdinaryGVS {
 
         let bar = ProgressBar::new(num_graphs as u64);
         bar.set_style(indicatif::ProgressStyle::default_bar()
-            .template("[{bar:50.cyan/blue}] {pos}/{len} {msg}")
+            .template("[{bar:50.cyan/blue}] {pos}/{len} {elapsed_precise} remaining {eta} {msg}")
             .unwrap()
             .progress_chars("=>-"));
 
-        let mut out_g6s = Vec::new();
-        for g6 in in_g6s {
-            let g = Graph::from_g6(&g6);
-            if (self.use_triconnected && g.is_triconnected()) || 
-               (!self.use_triconnected && g.is_biconnected(None)) {
-                if !g.has_odd_automorphism(self.even_edges) {
-                    out_g6s.push(g.to_g6());
+        let mut out_g6s: Vec<String> = in_g6s.par_iter()
+            .filter_map(|g6| {
+                let g = Graph::from_g6(g6);
+                let keep = (self.use_triconnected && g.is_triconnected()) || 
+                   (!self.use_triconnected && g.is_biconnected(None));
+                if !keep || g.has_odd_automorphism(self.even_edges) {
+                    return None;
                 }
-            }
-            bar.inc(1);
-        }
+                Some(g.to_canon_g6())
+            })
+            .collect();
+
+        // sort the list of g6 strings to have a canonical order in the basis
+        out_g6s.sort();
+
         bar.finish();
 
-        println!("Found {} graphs in the basis.", out_g6s.len());
+        println!("Found {} graphs in the basis. Writing to {}...", out_g6s.len(), basis_path);
+        Graph::save_to_file(&out_g6s, &basis_path)?;
+
         println!("Done.");
 
         Ok(())
@@ -764,17 +810,8 @@ impl OrdinaryContract {
         let in_basis = self.domain.get_basis_g6()?;
         let out_basis = self.target.get_basis_g6()?;
         
-        let mut in_basis_map = std::collections::HashMap::new();
-        for (i, g6) in in_basis.iter().enumerate() {
-            in_basis_map.insert(g6.clone(), i);
-        }
+        let out_basis_map = make_basis_dict(&out_basis);
         
-        let mut out_basis_map = std::collections::HashMap::new();
-        for (i, g6) in out_basis.iter().enumerate() {
-            out_basis_map.insert(g6.clone(), i);
-        }
-        
-        let mut matrix: std::collections::BTreeMap<(usize, usize), i32> = std::collections::BTreeMap::new();
         let num_rows = in_basis.len();
         let num_cols = out_basis.len();
 
@@ -784,29 +821,46 @@ impl OrdinaryContract {
 
         let bar = ProgressBar::new(num_rows as u64);
         bar.set_style(indicatif::ProgressStyle::default_bar()
-            .template("[{bar:50.cyan/blue}] {pos}/{len} {msg}")
+            .template("[{bar:50.cyan/blue}] {pos}/{len} {elapsed_precise} remaining {eta} {msg}")
             .unwrap()
             .progress_chars("=>-"));
 
-        for g6 in in_basis {
-            let g = Graph::from_g6(&g6);
-            let contractions = g.get_contractions_with_sign(self.even_edges);
-            
-            for (g1, sign) in contractions {
-                let g1s = g1.to_g6();
-                let sign2 = 1i32;
-                let val = sign * sign2;
-                
-                if let Some(&col) = out_basis_map.get(&g1s) {
-                    let row = in_basis_map[&g6];
-                    *matrix.entry((row, col)).or_insert(0) += val;
+        let matrix_rows: Vec<FxHashMap<(usize, usize), i32>> = in_basis.par_iter()
+            .enumerate()
+            .map(|(row, g6)| {
+                let mut local: FxHashMap<(usize, usize), i32> = FxHashMap::default();
+                let g = Graph::from_g6(g6);
+                let contractions = g.get_contractions_with_sign(self.even_edges);
+
+                for (g1, sign) in contractions {
+                    let (g1s, sign2) = g1.to_canon_g6_sgn(self.even_edges);
+                    let val = sign * sign2;
+
+                    if let Some(&col) = out_basis_map.get(&g1s) {
+                        *local.entry((row, col)).or_insert(0) += val;
+                    }
                 }
+
+                bar.inc(1);
+                local
+            })
+            .collect();
+
+        let mut matrix: FxHashMap<(usize, usize), i32> = FxHashMap::with_capacity_and_hasher(
+            matrix_rows.iter().map(|m| m.len()).sum(),
+            Default::default(),
+        );
+
+        for row_map in matrix_rows {
+            for (k, v) in row_map {
+                // no += needed; rows are disjoint
+                matrix.insert(k, v);
             }
-            bar.inc(1);
         }
         bar.finish();
 
         println!("Saving matrix to file: {}", matrix_path);
+        save_matrix_to_sms_file(&matrix, num_rows, num_cols, &matrix_path)?;
         println!("Done.");
         
         Ok(())
@@ -889,26 +943,30 @@ fn load_matrix_from_sms_file(filename: &str) -> std::io::Result<(std::collection
     Ok((matrix, nrows, ncols))
 }
 
-fn save_matrix_to_sms_file(matrix: &std::collections::BTreeMap<(usize, usize), i32>, nrows: usize, ncols: usize, filename: &str) -> std::io::Result<()> {
+fn save_matrix_to_sms_file(matrix: &FxHashMap<(usize, usize), i32>, nrows: usize, ncols: usize, filename: &str) -> std::io::Result<()> {
     ensure_folder_of_filename_exists(filename)?;
-    
-    let mut file = std::fs::File::create(filename)
+
+    let file = std::fs::File::create(filename)
         .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for writing"))?;
-    
-    writeln!(file, "{} {} {}", nrows, ncols, matrix.len())?;
-    
-    for ((row, col), value) in matrix.iter() {
+    let mut writer = std::io::BufWriter::new(file);
+
+    writeln!(writer, "{} {} {}", nrows, ncols, matrix.len())?;
+
+    let mut entries: Vec<_> = matrix.iter().collect();
+    entries.sort_by_key(|((row, col), _)| (*row, *col));
+
+    for ((row, col), value) in entries {
         if *value == 0 {
             continue;
         }
-        writeln!(file, "{} {} {}", row + 1, col + 1, value)?;
+        writeln!(writer, "{} {} {}", row + 1, col + 1, value)?;
     }
-    
-    writeln!(file, "0 0 0")?;
+
+    writeln!(writer, "0 0 0")?;
     Ok(())
 }
 
-fn make_basis_dict(basis: &[String]) -> std::collections::HashMap<String, usize> {
+fn make_basis_dict(basis: &[String]) -> FxHashMap<String, usize> {
     basis.iter().enumerate()
         .map(|(i, g6)| (g6.clone(), i))
         .collect()
@@ -944,6 +1002,10 @@ fn test_matrix_vs_reference(
         );
     }
     
+    // before comparing entries, we have to account for possibly different basis orderings.
+    // load the domain and tagert basis and the reference basis. canonize the reference basis and find the permutation
+    // then correct the matrix indices (rows and columns) accorind to the row- and column permutations
+    // get the domain and target basis
     let in_basis = Graph::load_from_file(domain_basis_file)?;
     let out_basis = Graph::load_from_file(target_basis_file)?;
     let in_basis_map = make_basis_dict(&in_basis);
@@ -955,19 +1017,25 @@ fn test_matrix_vs_reference(
     let mut in_basis_ref_sgn = vec![0i32; in_basis_ref.len()];
     for i in 0..in_basis_ref.len() {
         let g = Graph::from_g6(&in_basis_ref[i]);
+        let (g1s, sgn) = g.to_canon_g6_sgn(even_edges);
+        in_basis_ref[i] = g1s;
+        in_basis_ref_sgn[i] = sgn;
+
+        // sanity checks
         if g.has_odd_automorphism(even_edges) {
             println!("Reference graph has odd automorphism: {}", g.to_g6());
         }
-        in_basis_ref_sgn[i] = 1;
     }
     
     let mut out_basis_ref_sgn = vec![0i32; out_basis_ref.len()];
     for i in 0..out_basis_ref.len() {
         let g = Graph::from_g6(&out_basis_ref[i]);
+        let (g1s, sgn) = g.to_canon_g6_sgn(even_edges);
+        out_basis_ref[i] = g1s;
+        out_basis_ref_sgn[i] = sgn;
         if g.has_odd_automorphism(even_edges) {
             println!("Reference graph has odd automorphism: {}", g.to_g6());
         }
-        out_basis_ref_sgn[i] = 1;
     }
     
     let mut in_perm = vec![0usize; in_basis_ref.len()];
@@ -1023,6 +1091,16 @@ fn test_matrix_vs_reference(
 
 fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, check_automorphisms: bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("Checking basis correctness {}...", basis_file);
+
+    // Check both files exist
+    if !std::path::Path::new(basis_file).exists() {
+        println!("Basis file does not exist: {}", basis_file);
+        return Ok(());
+    }
+    if !std::path::Path::new(ref_file).exists() {
+        println!("Reference file does not exist: {}", ref_file);
+        return Ok(());
+    }
     
     let g6s = Graph::load_from_file(basis_file)?;
     let mut ref_g6s = Graph::load_from_file(ref_file)?;
@@ -1030,8 +1108,7 @@ fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, c
     // Re-canonize reference basis
     for i in 0..ref_g6s.len() {
         let g = Graph::from_g6(&ref_g6s[i]);
-        // Note: to_canon_g6() not implemented, using to_g6() instead
-        ref_g6s[i] = g.to_g6();
+        ref_g6s[i] = g.to_canon_g6();
         
         if check_automorphisms && g.has_odd_automorphism(even_edges) {
             println!("Reference graph has odd automorphism: {}", g.to_g6());
