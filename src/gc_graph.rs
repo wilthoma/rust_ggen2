@@ -640,7 +640,7 @@ impl OrdinaryGVS {
 
         // sort the list of g6 strings to have a canonical order in the basis
         println!("Sorting basis...");
-        out_g6s.sort();
+        out_g6s.par_sort();
 
         println!("Found {} graphs in the basis. Writing to {}...", out_g6s.len(), basis_path);
         save_g6_file(&out_g6s, &basis_path)?;
