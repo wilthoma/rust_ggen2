@@ -1,4 +1,5 @@
 mod graphs;
+mod helpers;
 // mod kneissler;
 // mod nauty_interface;
 // use nauty_interface::*;
@@ -20,8 +21,8 @@ fn main() {
         .about("Creates a list of isomorphism classes of graphs in g6 format.")
         .arg(
             Arg::new("mode")
-            .help("Graph generation mode: plain, even, or odd")
-            .value_parser(["plain", "even", "odd"])
+            .help("Graph generation mode: plain, even, odd, or alltest (which runs all tests in sequence).")
+            .value_parser(["plain", "even", "odd", "alltest"])
             .required(true)
             .index(1),
         )
@@ -139,6 +140,11 @@ fn main() {
             .expect("Failed to create thread pool");
     }
 
+    if mode == "alltest" {
+        test_everything(n_loops_min, n_loops_max, n_defect_min, n_defect_max);
+        return;
+    }
+
 
     for n_loops in n_loops_min..=n_loops_max {
         for n_defect in n_defect_min..=n_defect_max {
@@ -204,4 +210,61 @@ fn main() {
     }
    
 
+}
+
+
+fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_defect: usize) {
+    // recreates all basis and matrix files in the specified range and compares to reference
+    
+    println!("Testing everything for loops in {}..={} and defect in {}..={}", min_loops, max_loops, min_defect, max_defect);
+    println!("Test plain graph generation...");
+    for n_loops in min_loops..=max_loops {
+        for n_defect in min_defect..=max_defect {
+            if !is_satisfiable(n_loops, n_defect) {
+                continue;
+            }
+            println!("Testing plain graph generation for {} loops and defect {}", n_loops, n_defect);
+            generate_graphs(n_loops, n_defect);
+            compare_file_to_ref(n_loops, n_defect).expect("Comparison failed");
+
+        }
+    }
+
+    println!("Testing GC basis generation...");
+    for use_triconnected in [true, false] {
+        for even_edges in [true, false] {
+            for n_loops in min_loops..=max_loops {
+                for n_defect in min_defect..=max_defect {
+                    if !is_satisfiable(n_loops, n_defect) {
+                        continue;
+                    }
+                    println!("Testing GC basis generation for {} loops and defect {}, even edges: {}, use triconnected: {}", n_loops, n_defect, even_edges, use_triconnected);
+                    let n_vertices = 2 * n_loops - 2 - n_defect;
+                    let OGC = OrdinaryGVS::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
+                    OGC.build_basis(true).expect("Build basis failed");
+                    OGC.test_basis_vs_ref().expect("Basis test failed");
+                }
+            }
+        }
+    }
+
+    println!("Testing GC matrix generation...");
+    for use_triconnected in [true, false] {
+        for even_edges in [true, false] {
+            for n_loops in min_loops..max_loops {
+                for n_defect in min_defect..max_defect {
+                    if !is_satisfiable(n_loops, n_defect) {
+                        continue;
+                    }
+                    println!("Testing GC matrix generation for {} loops and defect {}, even edges: {}, use triconnected: {}", n_loops, n_defect, even_edges, use_triconnected);
+                    let n_vertices = 2 * n_loops - 2 - n_defect;
+                    let Op = OrdinaryContract::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
+                    Op.build_matrix(true).expect("Build matrix failed");
+                    Op.test_matrix_vs_ref().expect("Matrix test failed");
+                }
+            }
+        }
+    }
+
+    println!("All tests passed!");
 }

@@ -1,9 +1,9 @@
-use rand::seq::SliceRandom;
-use rand::{Rng, SeedableRng};
+// use rand::seq::SliceRandom;
+// use rand::{Rng, SeedableRng};
 use std::time::Instant;
 use std::io::BufRead;
 use std::collections::BTreeMap;
-
+use crate::helpers::*;
 type HashType = usize;
 
 type GraphScore = Vec<u64>;
@@ -264,26 +264,26 @@ impl DenseGraph {
         DenseGraph::new(n, edges)
     }
     
-    pub fn load_from_file(filename: &str) -> std::io::Result<Vec<String>> {
-        let file = std::fs::File::open(filename)?;
-        let reader = std::io::BufReader::new(file);
-        // read first line and trsnform to int
-        let mut lines = reader.lines();
-        let first_line = lines.next().unwrap()?;
-        let num_graphs: usize = first_line.trim().parse().unwrap();
-        let mut g6_list = Vec::new();
-        for line in lines { // .take(num_graphs) {
-            let g6 = line?;
-            g6_list.push(g6);
-        }
-        if g6_list.len() != num_graphs {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Number of graphs in file does not match the first line",
-            ));
-        }
-        Ok(g6_list)
-    }
+    // pub fn load_from_file(filename: &str) -> std::io::Result<Vec<String>> {
+    //     let file = std::fs::File::open(filename)?;
+    //     let reader = std::io::BufReader::new(file);
+    //     // read first line and trsnform to int
+    //     let mut lines = reader.lines();
+    //     let first_line = lines.next().unwrap()?;
+    //     let num_graphs: usize = first_line.trim().parse().unwrap();
+    //     let mut g6_list = Vec::new();
+    //     for line in lines { // .take(num_graphs) {
+    //         let g6 = line?;
+    //         g6_list.push(g6);
+    //     }
+    //     if g6_list.len() != num_graphs {
+    //         return Err(std::io::Error::new(
+    //             std::io::ErrorKind::InvalidData,
+    //             "Number of graphs in file does not match the first line",
+    //         ));
+    //     }
+    //     Ok(g6_list)
+    // }
 
     /// Refines a given original coloring based on given hash values provided for every vertex.
     /// Each of the original classes is (possibly) split into multiple classes of vertices of equal hash values.

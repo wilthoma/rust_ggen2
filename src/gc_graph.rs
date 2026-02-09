@@ -5,48 +5,8 @@ use std::io::Write;
 use crate::densegraph::DenseGraph;
 use rustc_hash::FxHashMap;
 use rayon::prelude::*;
+use crate::helpers::*;
 
-fn permutation_sign<T: Ord>(p: &[T]) -> i32 {
-    let mut sign = 1;
-    for i in 0..p.len() {
-        for j in (i + 1)..p.len() {
-            if p[i] > p[j] {
-                sign *= -1;
-            }
-        }
-    }
-    sign
-}
-
-fn inverse_permutation(p: &[u8]) -> Vec<u8> {
-    let mut inv = vec![0; p.len()];
-    for i in 0..p.len() {
-        inv[p[i] as usize] = i as u8;
-    }
-    inv
-}
-
-fn print_perm(p: &[u8]) {
-    for &val in p {
-        print!("{} ", val);
-    }
-    println!();
-}
-
-fn permute_to_left(u: u8, v: u8, n: u8) -> Vec<u8> {
-    let mut p = vec![0; n as usize];
-    p[0] = u;
-    p[1] = v;
-    let mut idx = 2;
-    for j in 0..n {
-        if j == u || j == v {
-            continue;
-        }
-        p[idx] = j;
-        idx += 1;
-    }
-    inverse_permutation(&p)
-}
 
 
 
@@ -725,8 +685,8 @@ impl OrdinaryGVS {
             &self.get_basis_ref_file_path(),
             self.even_edges,
             true,
-        )?;
-        Ok(())
+            true
+        )
     }
 }
 
@@ -825,10 +785,9 @@ impl OrdinaryContract {
             .unwrap()
             .progress_chars("=>-"));
 
-        let matrix_rows: Vec<FxHashMap<(usize, usize), i32>> = in_basis.par_iter()
-            .enumerate()
-            .map(|(row, g6)| {
-                let mut local: FxHashMap<(usize, usize), i32> = FxHashMap::default();
+        let matrix_rows: Vec<FxHashMap<usize, i32>> = in_basis.par_iter()
+            .map(|g6| {
+                let mut local: FxHashMap<usize, i32> = FxHashMap::default();
                 let g = Graph::from_g6(g6);
                 let contractions = g.get_contractions_with_sign(self.even_edges);
 
@@ -837,7 +796,7 @@ impl OrdinaryContract {
                     let val = sign * sign2;
 
                     if let Some(&col) = out_basis_map.get(&g1s) {
-                        *local.entry((row, col)).or_insert(0) += val;
+                        *local.entry(col).or_insert(0) += val;
                     }
                 }
 
@@ -846,21 +805,21 @@ impl OrdinaryContract {
             })
             .collect();
 
-        let mut matrix: FxHashMap<(usize, usize), i32> = FxHashMap::with_capacity_and_hasher(
-            matrix_rows.iter().map(|m| m.len()).sum(),
-            Default::default(),
-        );
+        // let mut matrix: FxHashMap<(usize, usize), i32> = FxHashMap::with_capacity_and_hasher(
+        //     matrix_rows.iter().map(|m| m.len()).sum(),
+        //     Default::default(),
+        // );
 
-        for row_map in matrix_rows {
-            for (k, v) in row_map {
-                // no += needed; rows are disjoint
-                matrix.insert(k, v);
-            }
-        }
+        // for row_map in matrix_rows {
+        //     for (k, v) in row_map {
+        //         // no += needed; rows are disjoint
+        //         matrix.insert(k, v);
+        //     }
+        // }
         bar.finish();
 
         println!("Saving matrix to file: {}", matrix_path);
-        save_matrix_to_sms_file(&matrix, num_rows, num_cols, &matrix_path)?;
+        save_matrix_to_sms_file(&matrix_rows, num_cols, &matrix_path)?;
         println!("Done.");
         
         Ok(())
@@ -879,100 +838,14 @@ impl OrdinaryContract {
             &self.domain.get_basis_ref_file_path(),
             &self.target.get_basis_ref_file_path(),
             self.even_edges,
-        )?;
-        Ok(())
+        )
     }
     
 }
 
 
-fn ensure_folder_of_filename_exists(filename: &str) -> std::io::Result<()> {
-    if let Some(pos) = filename.rfind(|c| c == '/' || c == '\\') {
-        let folder = &filename[..pos];
-        if !std::path::Path::new(folder).exists() {
-            std::fs::create_dir_all(folder)?;
-        }
-    }
-    Ok(())
-}
 
-fn load_matrix_from_sms_file(filename: &str) -> std::io::Result<(std::collections::BTreeMap<(usize, usize), i32>, usize, usize)> {
-    
-    let file = std::fs::File::open(filename)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to open file for reading {}", filename)))?;
-    let reader = std::io::BufReader::new(file);
-    let mut lines = reader.lines();
-    
-    let first_line = lines.next()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Empty file"))?
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to read first line"))?;
-    
-    let parts: Vec<&str> = first_line.split_whitespace().collect();
-    let nrows: usize = parts[0].parse()
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid nrows"))?;
-    let ncols: usize = parts[1].parse()
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid ncols"))?;
-    
-    let mut matrix = std::collections::BTreeMap::new();
-    
-    for line in lines {
-        let line = line?;
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 3 {
-            continue;
-        }
-        
-        let row: usize = parts[0].parse()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid row"))?;
-        let col: usize = parts[1].parse()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid col"))?;
-        let val: i32 = parts[2].parse()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid value"))?;
-        
-        if row == 0 && col == 0 && val == 0 {
-            break;
-        }
-        if row == 0 || col == 0 {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, 
-                format!("Invalid row or column index (namely 0) in SMS file: {}", filename)));
-        }
-        
-        matrix.insert((row - 1, col - 1), val);
-    }
-    
-    Ok((matrix, nrows, ncols))
-}
-
-fn save_matrix_to_sms_file(matrix: &FxHashMap<(usize, usize), i32>, nrows: usize, ncols: usize, filename: &str) -> std::io::Result<()> {
-    ensure_folder_of_filename_exists(filename)?;
-
-    let file = std::fs::File::create(filename)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for writing"))?;
-    let mut writer = std::io::BufWriter::new(file);
-
-    writeln!(writer, "{} {} {}", nrows, ncols, matrix.len())?;
-
-    let mut entries: Vec<_> = matrix.iter().collect();
-    entries.sort_by_key(|((row, col), _)| (*row, *col));
-
-    for ((row, col), value) in entries {
-        if *value == 0 {
-            continue;
-        }
-        writeln!(writer, "{} {} {}", row + 1, col + 1, value)?;
-    }
-
-    writeln!(writer, "0 0 0")?;
-    Ok(())
-}
-
-fn make_basis_dict(basis: &[String]) -> FxHashMap<String, usize> {
-    basis.iter().enumerate()
-        .map(|(i, g6)| (g6.clone(), i))
-        .collect()
-}
-
-fn test_matrix_vs_reference(
+pub fn test_matrix_vs_reference(
     mat_file: &str,
     ref_file: &str,
     domain_basis_file: &str,
@@ -991,7 +864,7 @@ fn test_matrix_vs_reference(
             "Matrix dimensions are different: {}x{} vs {}x{}",
             nrows, ncols, nrows_ref, ncols_ref
         );
-        return Ok(());
+        return Err("Matrix dimensions do not match".into());
     }
     
     if matrix.len() != ref_matrix.len() {
@@ -1000,19 +873,20 @@ fn test_matrix_vs_reference(
             matrix.len(),
             ref_matrix.len()
         );
+        return Err("Matrix number of entries do not match".into());
     }
     
     // before comparing entries, we have to account for possibly different basis orderings.
     // load the domain and tagert basis and the reference basis. canonize the reference basis and find the permutation
     // then correct the matrix indices (rows and columns) accorind to the row- and column permutations
     // get the domain and target basis
-    let in_basis = Graph::load_from_file(domain_basis_file)?;
-    let out_basis = Graph::load_from_file(target_basis_file)?;
+    let in_basis = load_g6_file(domain_basis_file)?;
+    let out_basis = load_g6_file(target_basis_file)?;
     let in_basis_map = make_basis_dict(&in_basis);
     let out_basis_map = make_basis_dict(&out_basis);
     
-    let mut in_basis_ref = Graph::load_from_file(domain_ref_file)?;
-    let mut out_basis_ref = Graph::load_from_file(target_ref_file)?;
+    let mut in_basis_ref = load_g6_file(domain_ref_file)?;
+    let mut out_basis_ref = load_g6_file(target_ref_file)?;
     
     let mut in_basis_ref_sgn = vec![0i32; in_basis_ref.len()];
     for i in 0..in_basis_ref.len() {
@@ -1024,6 +898,7 @@ fn test_matrix_vs_reference(
         // sanity checks
         if g.has_odd_automorphism(even_edges) {
             println!("Reference graph has odd automorphism: {}", g.to_g6());
+            return Err("Reference graph has odd automorphism".into());
         }
     }
     
@@ -1035,6 +910,7 @@ fn test_matrix_vs_reference(
         out_basis_ref_sgn[i] = sgn;
         if g.has_odd_automorphism(even_edges) {
             println!("Reference graph has odd automorphism: {}", g.to_g6());
+            return Err("Reference graph has odd automorphism".into());
         }
     }
     
@@ -1044,6 +920,7 @@ fn test_matrix_vs_reference(
             in_perm[i] = idx;
         } else {
             println!("Error: {} not found in domain basis", in_basis_ref[i]);
+            return Err(format!("Reference graph {} not found in domain basis", in_basis_ref[i]).into());
         }
     }
     
@@ -1053,6 +930,7 @@ fn test_matrix_vs_reference(
             out_perm[i] = idx;
         } else {
             println!("Error: {} not found in target basis", out_basis_ref[i]);
+            return Err(format!("Reference graph {} not found in target basis", out_basis_ref[i]).into());
         }
     }
     
@@ -1075,6 +953,7 @@ fn test_matrix_vs_reference(
                     "g6 code {} -> {} value: {}",
                     in_basis[*key_row], out_basis[*key_col], value
                 );
+                return Err(format!("Matrix entry ({}, {}) differs: {} vs {}", key_row, key_col, ref_value, value).into());
             }
         } else {
             println!("Entry {} {} not found in ref matrix", key_row, key_col);
@@ -1082,6 +961,7 @@ fn test_matrix_vs_reference(
                 "g6 code {} -> {} value: {}",
                 in_basis[*key_row], out_basis[*key_col], value
             );
+            return Err(format!("Matrix entry ({}, {}) not found in ref matrix", key_row, key_col).into());
         }
     }
     
@@ -1089,21 +969,25 @@ fn test_matrix_vs_reference(
     Ok(())
 }
 
-fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, check_automorphisms: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, check_automorphisms: bool, ref_hdr_in_file : bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("Checking basis correctness {}...", basis_file);
 
     // Check both files exist
     if !std::path::Path::new(basis_file).exists() {
         println!("Basis file does not exist: {}", basis_file);
-        return Ok(());
+        return Err("Basis file does not exist".into());
     }
     if !std::path::Path::new(ref_file).exists() {
         println!("Reference file does not exist: {}", ref_file);
-        return Ok(());
+        return Err("Reference file does not exist".into());
     }
     
-    let g6s = Graph::load_from_file(basis_file)?;
-    let mut ref_g6s = Graph::load_from_file(ref_file)?;
+    let g6s = load_g6_file(basis_file)?;
+    let mut ref_g6s = if ref_hdr_in_file {
+        load_g6_file(ref_file)?
+    } else {
+        load_g6_file_nohdr(ref_file)?
+    };
     
     // Re-canonize reference basis
     for i in 0..ref_g6s.len() {
@@ -1112,6 +996,7 @@ fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, c
         
         if check_automorphisms && g.has_odd_automorphism(even_edges) {
             println!("Reference graph has odd automorphism: {}", g.to_g6());
+            return Err("Reference graph has odd automorphism".into());
         }
     }
     
@@ -1126,6 +1011,7 @@ fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, c
         for g6 in &diff {
             println!("{}", g6);
         }
+        return Err("Basis contains graphs not in reference".into());
     } else {
         println!("All graphs in the basis are in the reference");
     }
@@ -1136,6 +1022,7 @@ fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, c
         for g6 in &diff {
             println!("{}", g6);
         }
+        return Err("Reference contains graphs not in basis".into());
     } else {
         println!("All graphs in the reference are in the basis");
     }

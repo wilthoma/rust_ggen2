@@ -17,11 +17,13 @@ use std::ffi::{CString, CStr};
 use std::os::raw::c_char;
 use std::ptr;
 
+use crate::helpers::*;
+
 use zeroize::Zeroize;
 use crate::densegraph::DenseGraph;
 use rustc_hash::FxHashSet;
 
-use crate::gc_graph::Graph as GCGraph;
+use crate::gc_graph::{Graph as GCGraph, test_basis_vs_reference};
 
 // unsafe extern "C" {
 //     fn canonicalize_g6(input: *const c_char, output: *mut c_char, output_size: usize);
@@ -30,17 +32,6 @@ use crate::gc_graph::Graph as GCGraph;
 use std::io;
 use std::io::prelude::*;
 
-fn pause() {
-    let mut stdin = io::stdin();
-    let mut stdout = io::stdout();
-
-    // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
-    write!(stdout, "Press enter to continue...").unwrap();
-    stdout.flush().unwrap();
-
-    // Read a single byte and discard
-    let _ = stdin.read(&mut [0u8]).unwrap();
-}
 
 #[derive(Clone)]
 pub struct Graph {
@@ -278,39 +269,6 @@ impl Graph {
         Ok(())
     }
 
-    pub fn load_from_file(filename: &str) -> std::io::Result<Vec<String>> {
-        let file = std::fs::File::open(filename)?;
-        let reader = std::io::BufReader::new(file);
-        // read first line and trsnform to int
-        let mut lines = reader.lines();
-        let first_line = lines.next().unwrap()?;
-        let num_graphs: usize = first_line.trim().parse().unwrap();
-        let mut g6_list = Vec::new();
-        for line in lines { // .take(num_graphs) {
-            let g6 = line?;
-            g6_list.push(g6);
-        }
-        if g6_list.len() != num_graphs {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Number of graphs in file does not match the first line",
-            ));
-        }
-        Ok(g6_list)
-    }
-
-    pub fn load_from_file_nohdr(filename: &str) -> std::io::Result<Vec<String>> {
-        let file = std::fs::File::open(filename)?;
-        let reader = std::io::BufReader::new(file);
-        // read first line and trsnform to int
-        let lines = reader.lines();
-        let mut g6_list = Vec::new();
-        for line in lines {
-            let g6 = line?;
-            g6_list.push(g6);
-        }
-        Ok(g6_list)
-    }
 
     pub fn tetrahedron_graph() -> Graph {
         Graph {
@@ -588,16 +546,9 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
 
         // contract an edge
         let otherfilename = format!("data/graphs{}_{}.g6", g, d-1);
-        let mut g6s = Graph::load_from_file(&otherfilename)?;
+        let mut g6s = load_g6_file(&otherfilename)?;
         let total = g6s.len();
-        let bar = ProgressBar::new(total as u64);
-        bar.set_style(
-            ProgressStyle::with_template(
-                "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) ETA: {eta_precise}",
-            )
-            .unwrap()
-            .progress_chars("#>-"),
-        );
+        let bar = get_progress_bar(total);
         // let counter = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         let g6_set: FxHashSet<String> = g6s
@@ -700,17 +651,10 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
             let fname2 = format!("data/graphs{}_{}.g6", l2, 0);
             println!("{} graphs loaded from {}...", l1, fname1);
             println!("{} graphs loaded from {}...", l2, fname2);
-            let g6s1 = Graph::load_from_file(&fname1)?;
-            let g6s2 = Graph::load_from_file(&fname2)?;
+            let g6s1 = load_g6_file(&fname1)?;
+            let g6s2 = load_g6_file(&fname2)?;
             let total = g6s1.len()* g6s2.len();
-            let bar = ProgressBar::new(total as u64);
-            bar.set_style(
-                ProgressStyle::with_template(
-                    "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) ETA: {eta_precise}",
-                )
-                .unwrap()
-                .progress_chars("#>-"),
-            );
+            let bar = get_progress_bar(total);
             let g6s1 = g6s1.into_par_iter().map(|s| Graph::from_g6(&s)).collect::<Vec<_>>();
             let g6s2 = g6s2.into_par_iter().map(|s| Graph::from_g6(&s)).collect::<Vec<_>>();
             for g1 in g6s1.iter() {
@@ -736,17 +680,10 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         if g>=5 {
             let l1 = g-2;
             let otherfname = format!("data/graphs{}_0.g6", l1);
-            let g6s = Graph::load_from_file(&otherfname)?;
+            let g6s = load_g6_file(&otherfname)?;
             println!("{} graphs loaded from {}...", g6s.len(), otherfname);
             let total = g6s.len();
-            let bar = ProgressBar::new(total as u64);
-            bar.set_style(
-                ProgressStyle::with_template(
-                    "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) ETA: {eta_precise}",
-                )
-                .unwrap()
-                .progress_chars("#>-"),
-            );
+            let bar = get_progress_bar(total);
             for (id,gg) in g6s.into_iter().map(|s| Graph::from_g6(&s)).enumerate(){
                 for i in 0..gg.edges.len() {
                     let ggg = gg.replace_edge_by_tetra(i);
@@ -761,19 +698,12 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         println!("... connecting edges ...");
         if g>3 {
             let otherfname = format!("data/graphs{}_0.g6", g-1);
-            let g6s = Graph::load_from_file(&otherfname)?;
+            let g6s = load_g6_file(&otherfname)?;
             println!("{} graphs loaded from {}...", g6s.len(), otherfname);
             let ee = e-3;
             
             let total = g6s.len();
-            let bar2 = ProgressBar::new(total as u64);
-            bar2.set_style(
-                ProgressStyle::with_template(
-                    "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) ETA: {eta_precise}",
-                )
-                .unwrap()
-                .progress_chars("#>-"),
-            );
+            let bar2 = get_progress_bar(total);
 
             let new_g6s: Vec<String> = g6s
                 .par_iter()
@@ -834,32 +764,36 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-pub fn compare_file_to_ref(l : usize, d : usize) {
+pub fn compare_file_to_ref(l : usize, d : usize) -> Result<(), Box<dyn Error>>{
         let filename = format!("data/graphs{}_{}.g6", l, d);
         let refname = format!("data/ref/graphs{}_{}.geng", l, d);
-        let g6s = Graph::load_from_file(&filename).unwrap();
-        let g6_ref = Graph::load_from_file_nohdr(&refname).unwrap();
-        // assert_eq!(g6s.len(), g6_ref.len(), "Number of graphs in {} and {} do not match", filename, refname);
-        // take the difference of g6s and g6_ref as sets
-        let g6s_set: FxHashSet<String> = g6s.into_iter().collect();
-        let g6_ref_set = canonicalize_and_dedup_g6(&g6_ref);
-        // sanity check that nothing was removed
-        if g6_ref_set.len() != g6_ref.len() {
-            panic!("Error: canonicalization removed some graphs from the reference set. Original size: {}, after canonicalization: {}.", g6_ref.len(), g6_ref_set.len());
-        }
-        let diff: Vec<_> = g6s_set.difference(&g6_ref_set).collect();
-        if !diff.is_empty() {
-            println!("Graphs in {} but not in {}: {:?}", filename, refname, diff);
-        }
-        assert!(diff.is_empty(), "Graphs in {} but not in {}", filename, refname);
-        // take the difference of g6_ref and g6s as sets
-        let g6s_set_owned: FxHashSet<String> = g6s_set.into_iter().collect();
-        let diff: Vec<_> = g6_ref_set.difference(&g6s_set_owned).collect();
-        if !diff.is_empty() {
-            println!("Graphs in {} but not in {}: {:?}", refname, filename, diff);
-        }
-        assert!(diff.is_empty(), "Graphs in {} but not in {}", refname, filename);
-        println!("Graphs in {} and {} match", filename, refname);
+
+        test_basis_vs_reference(&filename, &refname, false, false, false)
+
+
+        // let g6s = load_g6_file(&filename).unwrap();
+        // let g6_ref = load_g6_file_nohdr(&refname).unwrap();
+        // // assert_eq!(g6s.len(), g6_ref.len(), "Number of graphs in {} and {} do not match", filename, refname);
+        // // take the difference of g6s and g6_ref as sets
+        // let g6s_set: FxHashSet<String> = g6s.into_iter().collect();
+        // let g6_ref_set = canonicalize_and_dedup_g6(&g6_ref);
+        // // sanity check that nothing was removed
+        // if g6_ref_set.len() != g6_ref.len() {
+        //     panic!("Error: canonicalization removed some graphs from the reference set. Original size: {}, after canonicalization: {}.", g6_ref.len(), g6_ref_set.len());
+        // }
+        // let diff: Vec<_> = g6s_set.difference(&g6_ref_set).collect();
+        // if !diff.is_empty() {
+        //     println!("Graphs in {} but not in {}: {:?}", filename, refname, diff);
+        // }
+        // assert!(diff.is_empty(), "Graphs in {} but not in {}", filename, refname);
+        // // take the difference of g6_ref and g6s as sets
+        // let g6s_set_owned: FxHashSet<String> = g6s_set.into_iter().collect();
+        // let diff: Vec<_> = g6_ref_set.difference(&g6s_set_owned).collect();
+        // if !diff.is_empty() {
+        //     println!("Graphs in {} but not in {}: {:?}", refname, filename, diff);
+        // }
+        // assert!(diff.is_empty(), "Graphs in {} but not in {}", refname, filename);
+        // println!("Graphs in {} and {} match", filename, refname);
 }
 
 #[cfg(test)]
