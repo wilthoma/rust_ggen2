@@ -53,6 +53,7 @@ pub fn permute_to_left(u: u8, v: u8, n: u8) -> Vec<u8> {
 
 pub fn load_g6_file(filename: &str) -> std::io::Result<Vec<String>> {
     let file = std::fs::File::open(filename)?;
+    println!("Loading g6 file: {}...", filename);
     let reader = std::io::BufReader::new(file);
     // read first line and trsnform to int
     let mut lines = reader.lines();
@@ -84,6 +85,7 @@ pub fn load_g6_file(filename: &str) -> std::io::Result<Vec<String>> {
 
 pub fn load_g6_file_nohdr(filename: &str) -> std::io::Result<Vec<String>> {
     let file = std::fs::File::open(filename)?;
+    println!("Loading g6 file: {}...", filename);
     let reader = std::io::BufReader::new(file);
     // read first line and trsnform to int
     let lines = reader.lines();
@@ -183,6 +185,7 @@ pub fn load_matrix_from_sms_file(filename: &str) -> std::io::Result<(FxHashMap<(
 pub fn save_matrix_to_sms_file(matrix_rows: &Vec<FxHashMap<usize, i32>>, ncols: usize, filename: &str) -> std::io::Result<()> {
     let nrows = matrix_rows.len();
     ensure_folder_of_filename_exists(filename)?;
+    println!("Saving matrix to file: {}...", filename);
 
     let file = std::fs::File::create(filename)
         .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to open file for writing"))?;
