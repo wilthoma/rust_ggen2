@@ -754,6 +754,7 @@ impl OrdinaryContract {
         let in_basis = self.domain.get_basis_g6()?;
         let out_basis = self.target.get_basis_g6()?;
         
+        println!("Building output basis index map...");
         let out_basis_map = make_basis_dict(&out_basis);
         
         let num_rows = in_basis.len();
