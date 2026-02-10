@@ -747,8 +747,8 @@ impl OrdinaryContract {
         }
 
         let matrix_path = self.get_matrix_file_path();
-        println!("{}", get_type_string(self.even_edges));
-        println!("{}", self.even_edges);
+        // println!("{}", get_type_string(self.even_edges));
+        // println!("{}", self.even_edges);
         println!("The matrix path is {}", matrix_path);
         println!("The input basis file is {}", self.domain.get_basis_file_path());
         println!("The output basis file is {}", self.target.get_basis_file_path());
