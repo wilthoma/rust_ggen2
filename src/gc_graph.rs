@@ -697,8 +697,9 @@ impl OrdinaryContract {
 
     pub fn get_matrix_file_path(&self) -> String {
         format!(
-            "data/ordinary/{}contractD{}_{}.txt",
+            "data/ordinary/{}{}/contractD{}_{}.txt",
             if self.use_triconnected { "tri/" } else { "" },
+            get_type_string(self.even_edges),
             self.num_vertices,
             self.num_loops
         )
@@ -746,6 +747,11 @@ impl OrdinaryContract {
         }
 
         let matrix_path = self.get_matrix_file_path();
+        println!("{}", get_type_string(self.even_edges));
+        println!("{}", self.even_edges);
+        println!("The matrix path is {}", matrix_path);
+        println!("The input basis file is {}", self.domain.get_basis_file_path());
+        println!("The output basis file is {}", self.target.get_basis_file_path());
         if !ignore_existing_files && std::path::Path::new(&matrix_path).exists() {
             println!("Matrix file already exists: {}", matrix_path);
             return Ok(());

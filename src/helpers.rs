@@ -52,6 +52,15 @@ pub fn permute_to_left(u: u8, v: u8, n: u8) -> Vec<u8> {
 }
 
 pub fn load_g6_file(filename: &str) -> std::io::Result<Vec<String>> {
+    // check if exists
+    if !std::path::Path::new(filename).exists() {
+        println!("File does not exist: {}", filename);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("File not found: {}", filename),
+        ));
+    }
+
     let file = std::fs::File::open(filename)?;
     println!("Loading g6 file: {}...", filename);
     let reader = std::io::BufReader::new(file);
