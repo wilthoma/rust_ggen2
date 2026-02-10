@@ -258,16 +258,16 @@ impl Graph {
         }
     }
 
-    pub fn save_to_file(g6_list: &[String], filename: &str) -> std::io::Result<()> {
-        let mut file = std::fs::File::create(filename)?;
-        // first line is number of graphs
-        writeln!(file, "{}", g6_list.len())?;
-        // write each graph6 string
-        for g6 in g6_list {
-            writeln!(file, "{}", g6)?;
-        }
-        Ok(())
-    }
+    // pub fn save_to_file(g6_list: &[String], filename: &str) -> std::io::Result<()> {
+    //     let mut file = std::fs::File::create(filename)?;
+    //     // first line is number of graphs
+    //     writeln!(file, "{}", g6_list.len())?;
+    //     // write each graph6 string
+    //     for g6 in g6_list {
+    //         writeln!(file, "{}", g6)?;
+    //     }
+    //     Ok(())
+    // }
 
 
     pub fn tetrahedron_graph() -> Graph {
@@ -632,7 +632,7 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         // println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
         let g6_vec: Vec<String> = g6_set.into_iter().collect();
         println!("Saving {} graphs to file {}", g6_vec.len(), filename);
-        Graph::save_to_file(&g6_vec, &filename)?;
+        save_g6_file(&g6_vec, &filename)?;
         println!("Done.");
 
     } else if d==0 {
@@ -762,7 +762,7 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
 
         let g6_vec: Vec<String> = g6_canon.into_iter().collect();
-        Graph::save_to_file(&g6_vec, &filename)?;
+        save_g6_file(&g6_vec, &filename)?;
     }
 
     Ok(())
