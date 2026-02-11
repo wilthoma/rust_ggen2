@@ -1,5 +1,6 @@
 use graph6_rs::Graph as G6Graph;
 use rand::Rng;
+use zstd::zstd_safe::CompressionLevel;
 use std::collections::HashSet;
 use std::process::{Command, Stdio};
 use std::io::Write;
@@ -525,7 +526,7 @@ pub fn is_satisfiable(g: usize, d: usize) -> bool {
     true
 }
 
-pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_graphs(g : usize, d : usize, compression_level: CompressionLevel) -> Result<(), Box<dyn std::error::Error>> {
     // d is the defect
     println!("Generating graphs with genus {} and defect {}...", g, d);
 
@@ -632,7 +633,7 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         // println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
         let g6_vec: Vec<String> = g6_set.into_iter().collect();
         println!("Saving {} graphs to file {}", g6_vec.len(), filename);
-        save_g6_file(&g6_vec, &filename)?;
+        save_g6_file(&g6_vec, &filename, compression_level)?;
         println!("Done.");
 
     } else if d==0 {
@@ -762,7 +763,7 @@ pub fn generate_graphs(g : usize, d : usize) -> Result<(), Box<dyn std::error::E
         println!("Deduplication took {:.2?}, {} unique graphs remaining.", start.elapsed(), g6_canon.len());
 
         let g6_vec: Vec<String> = g6_canon.into_iter().collect();
-        save_g6_file(&g6_vec, &filename)?;
+        save_g6_file(&g6_vec, &filename, compression_level)?;
     }
 
     Ok(())

@@ -13,6 +13,9 @@ use gc_graph::{Graph as GCGraph, OrdinaryGVS, OrdinaryContract};
 use graphs::*;
 // use kneissler::*;
 use clap::{Command, Arg};
+use zstd::zstd_safe::CompressionLevel;
+
+const COMPRESS_LEVEL: i32 = 5; // 1-9, 1 is fastest, 9 is best compression
 
 fn main() {
     let matches = Command::new("Graph list generator")
@@ -93,6 +96,14 @@ fn main() {
                 .action(clap::ArgAction::SetTrue)
         )
         .arg(
+            Arg::new("compress")
+                .short('c')
+                .long("compress")
+                .required(false)
+                .help("Compress output files.")
+                .action(clap::ArgAction::SetTrue)
+        )
+        .arg(
             Arg::new("test")
                 .long("test")
                 .required(false)
@@ -126,6 +137,7 @@ fn main() {
     let nobuild = *matches.get_one::<bool>("nobuild").unwrap_or(&false);
     let gen_matrices = *matches.get_one::<bool>("M").unwrap_or(&false);
     let use_triconnected = *matches.get_one::<bool>("3").unwrap_or(&false);
+    let compress = *matches.get_one::<bool>("compress").unwrap_or(&false);
 
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
     let n_loops_min: usize = *matches.get_one::<usize>("min_loops").expect("Invalid number of min loops");
@@ -133,6 +145,8 @@ fn main() {
     let n_defect_min: usize = *matches.get_one::<usize>("min_defect").expect("Invalid number of min defect");
     let n_defect_max: usize = *matches.get_one::<usize>("max_defect").expect("Invalid number of max defect");
     let geng_path = matches.get_one::<String>("geng").map(|s| s.as_str()).unwrap();
+
+    let compress_level = if compress { COMPRESS_LEVEL } else { 0 };
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
@@ -142,7 +156,7 @@ fn main() {
     }
 
     if mode == "alltest" {
-        test_everything(n_loops_min, n_loops_max, n_defect_min, n_defect_max);
+        test_everything(n_loops_min, n_loops_max, n_defect_min, n_defect_max, compress_level);
         return;
     }
 
@@ -168,7 +182,7 @@ fn main() {
                 if !gen_ref && !nobuild && !test{
                     let start = std::time::Instant::now();
                     println!("Generating graphs for {} loops and defect {}", n_loops, n_defect);
-                    generate_graphs(n_loops, n_defect).unwrap();
+                    generate_graphs(n_loops, n_defect, compress_level).unwrap();
                     let duration = start.elapsed();
                     println!("Time elapsed: {:?}", duration);
                 }
@@ -197,10 +211,10 @@ fn main() {
                 if !test {
                     if gen_matrices {
                         println!("Generating matrix files for {} loops and defect {}", n_loops, n_defect);
-                        Op.build_matrix(overwrite).expect("Build matrix failed");
+                        Op.build_matrix(overwrite, compress_level).expect("Build matrix failed");
                     } else {
                         println!("Generating basis files for {} loops and defect {}", n_loops, n_defect);
-                        OGC.build_basis(overwrite).expect("Build basis failed");
+                        OGC.build_basis(overwrite, compress_level).expect("Build basis failed");
                     }
                 }
 
@@ -214,7 +228,7 @@ fn main() {
 }
 
 
-fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_defect: usize) {
+fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_defect: usize, compression_level:i32) {
     // recreates all basis and matrix files in the specified range and compares to reference
     
     println!("Testing everything for loops in {}..={} and defect in {}..={}", min_loops, max_loops, min_defect, max_defect);
@@ -225,7 +239,7 @@ fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_de
                 continue;
             }
             println!("Testing plain graph generation for {} loops and defect {}", n_loops, n_defect);
-            generate_graphs(n_loops, n_defect);
+            generate_graphs(n_loops, n_defect, compression_level).expect("Graph generation failed");
             compare_file_to_ref(n_loops, n_defect).expect("Comparison failed");
 
         }
@@ -242,7 +256,7 @@ fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_de
                     println!("Testing GC basis generation for {} loops and defect {}, even edges: {}, use triconnected: {}", n_loops, n_defect, even_edges, use_triconnected);
                     let n_vertices = 2 * n_loops - 2 - n_defect;
                     let OGC = OrdinaryGVS::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
-                    OGC.build_basis(true).expect("Build basis failed");
+                    OGC.build_basis(true, compression_level).expect("Build basis failed");
                     OGC.test_basis_vs_ref().expect("Basis test failed");
                 }
             }
@@ -260,7 +274,7 @@ fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_de
                     println!("Testing GC matrix generation for {} loops and defect {}, even edges: {}, use triconnected: {}", n_loops, n_defect, even_edges, use_triconnected);
                     let n_vertices = 2 * n_loops - 2 - n_defect;
                     let Op = OrdinaryContract::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
-                    Op.build_matrix(true).expect("Build matrix failed");
+                    Op.build_matrix(true, compression_level).expect("Build matrix failed");
                     Op.test_matrix_vs_ref().expect("Matrix test failed");
                 }
             }

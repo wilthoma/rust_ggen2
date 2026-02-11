@@ -601,7 +601,7 @@ impl OrdinaryGVS {
         load_g6_file(&self.get_basis_file_path())
     }
 
-    pub fn build_basis(&self, ignore_existing_files: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn build_basis(&self, ignore_existing_files: bool, compression_level: i32) -> Result<(), Box<dyn std::error::Error>> {
         if !self.is_valid() {
             return Ok(());
         }
@@ -643,7 +643,7 @@ impl OrdinaryGVS {
         out_g6s.par_sort();
 
         println!("Found {} graphs in the basis. Writing to {}...", out_g6s.len(), basis_path);
-        save_g6_file(&out_g6s, &basis_path)?;
+        save_g6_file(&out_g6s, &basis_path, compression_level)?;
 
         println!("Done.");
 
@@ -741,7 +741,7 @@ impl OrdinaryContract {
         )
     }
 
-    pub fn build_matrix(&self, ignore_existing_files: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn build_matrix(&self, ignore_existing_files: bool, compression_level: i32) -> Result<(), Box<dyn std::error::Error>> {
         if !self.is_valid() {
             return Ok(());
         }
@@ -806,7 +806,7 @@ impl OrdinaryContract {
         // bar.finish();
 
         println!("Saving matrix to file: {}", matrix_path);
-        save_matrix_to_sms_file(&matrix_rows, num_cols, &matrix_path)?;
+        save_matrix_to_sms_file(&matrix_rows, num_cols, &matrix_path, compression_level)?;
         println!("Done.");
         
         Ok(())

@@ -106,7 +106,7 @@ pub fn load_g6_file_nohdr(filename: &str) -> std::io::Result<Vec<String>> {
     Ok(g6_list)
 }
 
-pub fn save_g6_file(g6_list: &[String], filename: &str) -> std::io::Result<()> {
+pub fn save_g6_file(g6_list: &[String], filename: &str, compression_level: i32) -> std::io::Result<()> {
     println!("Saving g6 file: {}...", filename);
     ensure_folder_of_filename_exists(filename)?;
     let file = std::fs::File::create(filename)
@@ -214,7 +214,7 @@ pub fn load_matrix_from_sms_file(filename: &str) -> std::io::Result<(FxHashMap<(
 }
 
 
-pub fn save_matrix_to_sms_file(matrix_rows: &Vec<FxHashMap<usize, i32>>, ncols: usize, filename: &str) -> std::io::Result<()> {
+pub fn save_matrix_to_sms_file(matrix_rows: &Vec<FxHashMap<usize, i32>>, ncols: usize, filename: &str, compression_level: i32) -> std::io::Result<()> {
     let nrows = matrix_rows.len();
     ensure_folder_of_filename_exists(filename)?;
     println!("Saving matrix to file: {}...", filename);
