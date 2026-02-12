@@ -38,4 +38,4 @@ All basis and matrix files are stored at hard-coded (but self-explanatory) locat
 
 # Relation to GH
 
-The functionality of rust_ggen2 is also available in GH. However, GH is too slow to generate large files. rust_ggen2 on the other hand is intended to produce large basis and matrix files (several 100M basis elements) on multicore machines with enough RAM.
+The functionality of rust_ggen2 is also available in [GH](https://github.com/sibrun/GH). However, GH is too slow to generate large files. rust_ggen2 on the other hand is intended to produce large basis and matrix files (several 100M basis elements) on multicore machines with enough RAM.
