@@ -35,7 +35,7 @@ Example:
 # File storage
 
 All basis and matrix files are stored at hard-coded (but self-explanatory) locations in the subfolder ```data/``` of the current folder. The basis files are text files with graphs being encoded as g6 strings. The matrices are stored as text files in sms format.
-If required, both can be zstd-compressed (option ```-c```) - this saves space on the disk but the files are no longer human readable.
+If required, both can be zstd-compressed (option ```-c```). This saves space on the disk but the files are no longer human readable.
 
 # Relation to GH
 
