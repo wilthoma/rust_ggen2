@@ -23,6 +23,7 @@ fn main() {
         .version("1.0")
         .author("Thomas Willwacher")
         .about("Creates a list of isomorphism classes of graphs in g6 format.")
+        .after_help("EXAMPLES:\n    cargo run --release -- plain 1 3 0 2\n    cargo run --release -- even 2 4 1 3 --compress\n    cargo run --release -- odd 1 2 0 1 -t 8")
         .arg(
             Arg::new("mode")
             .help("Graph generation mode: plain, even, odd, alltest (which runs all tests in sequence) or allclean (deletes all generated files).")
@@ -128,7 +129,7 @@ fn main() {
                 .required(false)
                 .default_value("geng")
         )
-        
+
         .get_matches();
 
     let mode = matches.get_one::<String>("mode").expect("Mode is required");
