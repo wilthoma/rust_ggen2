@@ -32,6 +32,10 @@ Example:
 
 ```rust_ggen2 odd 4 9 0 4 -t30 -3 -M```
 
+# File storage
+
+All basis and matrix files are stored at hard-coded (but self-explanatory) locations in the subfolder ```data/``` of the current folder.
+
 # Relation to GH
 
-The functionality above is also available in GH. However, the latter is too slow to generate large files. rust_ggen2 on the other hand is intended to produce large basis and matrix files (several 100M basis elements) on multicore machines with enough RAM.
+The functionality of rust_ggen2 is also available in GH. However, GH is too slow to generate large files. rust_ggen2 on the other hand is intended to produce large basis and matrix files (several 100M basis elements) on multicore machines with enough RAM.
