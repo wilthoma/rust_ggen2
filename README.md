@@ -16,7 +16,7 @@ Furthermore, it can create the matrices of the differential in the Kontsevich gr
 
 You have to follow the follwing workflow:
 1) Generate plain graphs. Here the graphs of higher defect are produced from those of lower defect, so the lower defect graphs need to be produced first.
-Example to generate plain graphs of loop orders 4,5,6,7,8,9 and defects 0,1,2,3,4,5:
+Example to generate plain graphs of loop orders 4-9 and defects 0-5:
 
 ```rust_ggen2 plain 4 9 0 5 -t30```
 
