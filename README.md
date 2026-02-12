@@ -17,15 +17,15 @@ Furthermore, it can create the matrices of the differential in the Kontsevich gr
 You have to follow the follwing workflow:
 1) Generate plain graphs. Here the graphs of higher defect are produced from those of lower defect, so the lower defect graphs need to be produced first.
 Example:
-```rust_ggen2 plain 4 9 0 5 -t30'''
+```rust_ggen2 plain 4 9 0 5 -t30```
 The optional "-t30" allows the program to use up to 30 threadds on multicore machines.
 2) Generate even or odd graphs. They are filtered from the plain graphs, so it is assumed the plain graphs have been created before.
 Example:
-```rust_ggen2 odd 4 9 0 5 -t30 -3'''
+```rust_ggen2 odd 4 9 0 5 -t30 -3```
 The optional "-3" tells the program to generate trivalent graphs.
 3) Generate matrix files. Here it is assumed that both the source and the target basis has already been created.
 Example:
-```rust_ggen2 odd 4 9 0 4 -t30 -3 -M'''
+```rust_ggen2 odd 4 9 0 4 -t30 -3 -M```
 
 # Relation to GH
 
