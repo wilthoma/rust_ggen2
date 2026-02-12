@@ -526,6 +526,10 @@ pub fn is_satisfiable(g: usize, d: usize) -> bool {
     true
 }
 
+pub fn plain_filename(l: usize, d: usize) -> String {
+    format!("data/graphs{}_{}.g6", l, d)
+}
+
 pub fn generate_graphs(g : usize, d : usize, compression_level: CompressionLevel) -> Result<(), Box<dyn std::error::Error>> {
     // d is the defect
     println!("Generating graphs with genus {} and defect {}...", g, d);
@@ -542,11 +546,11 @@ pub fn generate_graphs(g : usize, d : usize, compression_level: CompressionLevel
         return Ok(());
     }
 
-    let filename = format!("data/graphs{}_{}.g6", g, d);
+    let filename = plain_filename(g, d);
     if d>0 {
 
         // contract an edge
-        let otherfilename = format!("data/graphs{}_{}.g6", g, d-1);
+        let otherfilename = plain_filename(g, d-1);
         let mut g6s = load_g6_file(&otherfilename)?;
         let total = g6s.len();
         // let bar = get_progress_bar(total);

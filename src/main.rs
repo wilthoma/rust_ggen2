@@ -1,5 +1,6 @@
 mod graphs;
 mod helpers;
+use helpers::*;
 // mod kneissler;
 // mod nauty_interface;
 // use nauty_interface::*;
@@ -24,8 +25,8 @@ fn main() {
         .about("Creates a list of isomorphism classes of graphs in g6 format.")
         .arg(
             Arg::new("mode")
-            .help("Graph generation mode: plain, even, odd, or alltest (which runs all tests in sequence).")
-            .value_parser(["plain", "even", "odd", "alltest"])
+            .help("Graph generation mode: plain, even, odd, alltest (which runs all tests in sequence) or allclean (deletes all generated files).")
+            .value_parser(["plain", "even", "odd", "alltest", "allclean"])
             .required(true)
             .index(1),
         )
@@ -160,6 +161,11 @@ fn main() {
         return;
     }
 
+    if mode == "allclean" {
+        clean_all_generated_files(n_loops_min, n_loops_max, n_defect_min, n_defect_max);
+        return;
+    }
+
 
     for n_loops in n_loops_min..=n_loops_max {
         for n_defect in n_defect_min..=n_defect_max {
@@ -266,8 +272,8 @@ fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_de
     println!("Testing GC matrix generation...");
     for use_triconnected in [true, false] {
         for even_edges in [true, false] {
-            for n_loops in min_loops..max_loops {
-                for n_defect in min_defect..max_defect {
+            for n_loops in min_loops..=max_loops {
+                for n_defect in min_defect..max_defect { // one defect less since we don't necessarily have the necessary basis file
                     if !is_satisfiable(n_loops, n_defect) {
                         continue;
                     }
@@ -282,4 +288,71 @@ fn test_everything(min_loops: usize, max_loops: usize, min_defect: usize, max_de
     }
 
     println!("All tests passed!");
+}
+
+fn clean_all_generated_files(min_loops: usize, max_loops: usize, min_defect: usize, max_defect: usize) {
+    println!("Cleaning all generated files for loops in {}..={} and defect in {}..={}", min_loops, max_loops, min_defect, max_defect);
+    // clean the plain graphs
+    for n_loops in min_loops..=max_loops {
+        for n_defect in min_defect..=max_defect {
+            if !is_satisfiable(n_loops, n_defect) {
+                continue;
+            }
+            let filename = plain_filename(n_loops, n_defect);
+            println!("Cleaning file {}", filename);
+            if std::path::Path::new(&filename).exists() {
+                std::fs::remove_file(&filename).expect("Failed to remove file");
+            }
+        }
+    }
+
+    // clean the GC basis and matrix files
+    for use_triconnected in [true, false] {
+        for even_edges in [true, false] {
+            for n_loops in min_loops..=max_loops {
+                for n_defect in min_defect..=max_defect {
+                    if !is_satisfiable(n_loops, n_defect) {
+                        continue; 
+                    }
+                    let n_vertices = 2 * n_loops - 2 - n_defect;
+                    let OGC = OrdinaryGVS::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
+                    let filename = OGC.get_basis_file_path();
+                    println!("Cleaning file {}", filename);
+                    if std::path::Path::new(&filename).exists() {
+                        std::fs::remove_file(&filename).expect("Failed to remove file");    
+                    }
+                    // also clean the compressed version if it exists
+                    let compressed_filename = format!("{}{}", filename, ZSTD_EXTENSION);
+                    if std::path::Path::new(&compressed_filename).exists() {
+                        std::fs::remove_file(&compressed_filename).expect("Failed to remove compressed file");
+                    }
+                }
+            }
+        }
+    }
+    // clean the matrix files (both basis and compressed)
+    for use_triconnected in [true, false] {
+        for even_edges in [true, false] {
+            for n_loops in min_loops..=max_loops {
+                for n_defect in min_defect..max_defect {
+                    if !is_satisfiable(n_loops, n_defect) {
+                        continue; 
+                    }
+                    let n_vertices = 2 * n_loops - 2 - n_defect;
+                    let Op = OrdinaryContract::new(n_vertices as u8, n_loops as u8, even_edges, use_triconnected);
+                    let filename = Op.get_matrix_file_path();
+                    println!("Cleaning file {}", filename);
+                    if std::path::Path::new(&filename).exists() {
+                        std::fs::remove_file(&filename).expect("Failed to remove file");    
+                    }
+                    // also clean the compressed version if it exists
+                    let compressed_filename = format!("{}{}", filename, ZSTD_EXTENSION);
+                    if std::path::Path::new(&compressed_filename).exists() {
+                        std::fs::remove_file(&compressed_filename).expect("Failed to remove compressed file");
+                    }
+                }
+            }
+        }
+    }
+
 }

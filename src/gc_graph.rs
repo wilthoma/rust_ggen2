@@ -959,8 +959,8 @@ pub fn test_matrix_vs_reference(
 pub fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: bool, check_automorphisms: bool, ref_hdr_in_file : bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("Checking basis correctness {}...", basis_file);
 
-    // Check both files exist
-    if !std::path::Path::new(basis_file).exists() {
+    // Check both files exist (GC basis might be compressed)
+    if !std::path::Path::new(basis_file).exists() && !std::path::Path::new(&(basis_file.to_string() + ZSTD_EXTENSION)).exists() {
         println!("Basis file does not exist: {}", basis_file);
         return Err("Basis file does not exist".into());
     }
