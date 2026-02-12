@@ -12,6 +12,9 @@ pub const ZSTD_EXTENSION: &str = ".zst";
 
 pub const N_ZSTD_THREADS: u32 = 8; // number of threads for zstd compression
 
+const BUF_SIZE: usize = 500 * 1024 * 1024; // 500 MB buffer size for file reading
+
+
 pub fn permutation_sign<T: Ord>(p: &[T]) -> i32 {
     let mut sign = 1;
     for i in 0..p.len() {
@@ -77,17 +80,17 @@ pub fn load_g6_file(filename: &str) -> std::io::Result<Vec<String>> {
         let file = File::open(filename)?;
         // zstd::stream::read::Decoder<File> implements Read
         let decoder = zstd::stream::read::Decoder::new(file)?;
-        let reader = BufReader::new(decoder);
+        let reader = BufReader::with_capacity(BUF_SIZE, decoder);
         _load_g6_file(reader)
     } else {
         let file = File::open(filename)?;
-        let reader = BufReader::new(file);
+        let reader = BufReader::with_capacity(BUF_SIZE, file);
         _load_g6_file(reader)
     }
     
 }
 
-pub fn _load_g6_file<R:BufRead>(reader : R) -> std::io::Result<Vec<String>> {
+pub fn _load_g6_file<R: BufRead>(reader : R) -> std::io::Result<Vec<String>> {
     // read first line and transform to int
     let mut lines = reader.lines();
     let first_line = lines.next().unwrap()?;
@@ -119,7 +122,7 @@ pub fn _load_g6_file<R:BufRead>(reader : R) -> std::io::Result<Vec<String>> {
 pub fn load_g6_file_nohdr(filename: &str) -> std::io::Result<Vec<String>> {
     let file = std::fs::File::open(filename)?;
     println!("Loading g6 file: {}...", filename);
-    let reader = std::io::BufReader::new(file);
+    let reader = std::io::BufReader::with_capacity(BUF_SIZE, file);
     // read first line and trsnform to int
     let lines = reader.lines();
     let mut g6_list = Vec::new();
@@ -144,7 +147,7 @@ pub fn save_g6_file(g6_list: &[String], filename: &str, compression_level: i32) 
     if compression_level > 0 {
         let mut encoder = zstd::stream::write::Encoder::new(file, compression_level)?;
         encoder.multithread(N_ZSTD_THREADS)?;
-        let mut writer = std::io::BufWriter::new(encoder);
+        let mut writer = std::io::BufWriter::with_capacity(BUF_SIZE, encoder);
         
         _save_g6_file(g6_list, &mut writer)?;
         writer.flush()?;
@@ -152,7 +155,7 @@ pub fn save_g6_file(g6_list: &[String], filename: &str, compression_level: i32) 
         // need to finish the encoder to write the zstd footer
         writer.into_inner()?.finish()?;
     } else {
-    let mut writer = std::io::BufWriter::new(file);
+    let mut writer = std::io::BufWriter::with_capacity(BUF_SIZE, file);
         _save_g6_file(g6_list, &mut writer)?;
         writer.flush()?;
     }
@@ -222,12 +225,12 @@ pub fn load_matrix_from_sms_file(filename: &str) -> std::io::Result<(FxHashMap<(
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to open file for reading {}", filename)))?;
         let decoder = zstd::stream::read::Decoder::new(file)
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create zstd decoder for file {}", filename)))?;
-        let reader = std::io::BufReader::new(decoder);
+        let reader = std::io::BufReader::with_capacity(BUF_SIZE, decoder);
         _load_matrix_from_sms_file(reader)
     } else { 
         let file = std::fs::File::open(&filename)
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to open file for reading {}", filename)))?;
-        let reader = std::io::BufReader::new(file);
+        let reader = std::io::BufReader::with_capacity(BUF_SIZE, file);
         _load_matrix_from_sms_file(reader)
     }
 
@@ -311,12 +314,12 @@ pub fn save_matrix_to_sms_file(matrix_rows: &Vec<FxHashMap<usize, i32>>, ncols: 
     if filename.ends_with(ZSTD_EXTENSION) {
         let mut encoder = zstd::stream::write::Encoder::new(file, compression_level)?;
         encoder.multithread(N_ZSTD_THREADS)?;
-        let mut writer = std::io::BufWriter::new(encoder);
+        let mut writer = std::io::BufWriter::with_capacity(BUF_SIZE, encoder);
         _save_matrix_to_sms_file(matrix_rows, ncols, &mut writer)?;
         writer.flush()?;
         writer.into_inner()?.finish()?;
     } else {
-        let mut writer = std::io::BufWriter::new(file);
+        let mut writer = std::io::BufWriter::with_capacity(BUF_SIZE, file);
         _save_matrix_to_sms_file(matrix_rows, ncols, &mut writer)?;
         writer.flush()?;
     }
