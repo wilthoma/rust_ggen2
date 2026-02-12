@@ -34,8 +34,9 @@ Example:
 
 # File storage
 
-All basis and matrix files are stored at hard-coded (but self-explanatory) locations in the subfolder ```data/``` of the current folder.
+All basis and matrix files are stored at hard-coded (but self-explanatory) locations in the subfolder ```data/``` of the current folder. The basis files are text files with graphs being encoded as g6 strings. The matrices are stored as text files in sms format.
+If required, both can be zstd-compressed (option ```-c```) - this saves space on the disk but the files are no longer human readable.
 
 # Relation to GH
 
-The functionality of rust_ggen2 is also available in [GH](https://github.com/sibrun/GH). However, GH is too slow to generate large files. rust_ggen2 on the other hand is intended to produce large basis and matrix files (several 100M basis elements) on multicore machines with enough RAM.
+The functionality of rust_ggen2 is also available in [GH](https://github.com/sibrun/GH). However, GH is too slow to generate large files. rust_ggen2 on the other hand is intended to produce large basis and matrix files (several 100M basis elements) on multicore machines with enough RAM, and enough disk space to store the files.
