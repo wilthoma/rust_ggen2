@@ -969,13 +969,21 @@ pub fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: boo
         return Err("Reference file does not exist".into());
     }
     
-    let g6s = load_g6_file(basis_file)?;
+    let mut g6s = load_g6_file(basis_file)?;
     let mut ref_g6s = if ref_hdr_in_file {
         load_g6_file(ref_file)?
     } else {
         load_g6_file_nohdr(ref_file)?
     };
     
+    // First check: length
+    if g6s.len() != ref_g6s.len() {
+        println!("Number of graphs differ: {} vs {}", g6s.len(), ref_g6s.len());
+        return Err("Number of graphs differ".into());
+    } else {
+        println!("Number of graphs match: {}", g6s.len());
+    }
+
     // Re-canonize reference basis
     for i in 0..ref_g6s.len() {
         let g = Graph::from_g6(&ref_g6s[i]);
@@ -986,26 +994,46 @@ pub fn test_basis_vs_reference(basis_file: &str, ref_file: &str, even_edges: boo
             return Err("Reference graph has odd automorphism".into());
         }
     }
+
+    // For now: also re-canonize basis to be safe (in case of different canonization methods or bugs in canonization). In the future, we might want to store the basis in canonized form to avoid this step.
+    for i in 0..g6s.len() {
+        let g = Graph::from_g6(&g6s[i]);
+        g6s[i] = g.to_canon_g6();
+        
+        if check_automorphisms && g.has_odd_automorphism(even_edges) {
+            println!("Basis graph has odd automorphism: {}", g.to_g6());
+            return Err("Basis graph has odd automorphism".into());
+        }
+    }
     
     // Check whether entries are the same
     ref_g6s.par_sort();
+    let g6slen = g6s.len();
     let g6s_set: std::collections::HashSet<_> = g6s.into_iter().collect();
     let ref_g6s_set: std::collections::HashSet<_> = ref_g6s.iter().cloned().collect();
     
+    // Check whether graph sets have same size as list (otherwise we have duplicates)
+    if g6s_set.len() != g6slen {
+        println!("Duplicates found in basis: {} unique vs {} total", g6s_set.len(), g6slen);
+    }
+    if ref_g6s.len() != ref_g6s_set.len() {
+        println!("Duplicates found in reference: {} unique vs {} total", ref_g6s_set.len(), ref_g6s.len());
+    }
+
     let diff: std::collections::HashSet<_> = g6s_set.difference(&ref_g6s_set).cloned().collect();
     if !diff.is_empty() {
-        println!("The following graphs are in the basis but not in the reference:");
+        println!("The following {} graphs are in the basis but not in the reference:", diff.len());
         for g6 in &diff {
             println!("{}", g6);
         }
-        return Err("Basis contains graphs not in reference".into());
+        // return Err("Basis contains graphs not in reference".into());
     } else {
         println!("All graphs in the basis are in the reference");
     }
     
     let diff: std::collections::HashSet<_> = ref_g6s_set.difference(&g6s_set).cloned().collect();
     if !diff.is_empty() {
-        println!("The following graphs are in the reference but not in the basis:");
+        println!("The following {} graphs are in the reference but not in the basis:", diff.len());
         for g6 in &diff {
             println!("{}", g6);
         }

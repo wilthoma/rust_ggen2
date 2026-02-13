@@ -587,17 +587,46 @@ impl DenseGraph {
         let mut cur_vertex = 0u8;
         let mut nb_counters = vec![0u8; num_vertices as usize]; // number of neighbors found for each vertex
         for (i, &neighbor) in code.iter().enumerate() {
+            if neighbor == 0 {
+                panic!("Invalid neighbor index: 0 (1-based indexing expected)");
+            }
             let neighbor = neighbor - 1; // convert from 1-based to 0-based indexing
             if neighbor >= num_vertices {
                 panic!("Invalid neighbor index: {}", neighbor);
             }
+            // neghbor must be higher as current vertex
+            if neighbor <= cur_vertex {
+                panic!("Invalid neighbor index: {} (must be greater than current vertex {})", neighbor, cur_vertex);
+            }
             edges.push((cur_vertex, neighbor));
             nb_counters[cur_vertex as usize] += 1;
             nb_counters[neighbor as usize] += 1;
-            if nb_counters[cur_vertex as usize] == 3 {
+            while nb_counters[cur_vertex as usize] == 3 && cur_vertex < num_vertices - 1 {
                 cur_vertex += 1;
             }
         }
-        DenseGraph::new(num_vertices, edges)
+        edges.sort();
+        let ret = DenseGraph::new(num_vertices, edges);
+
+        // check validity of the resulting graph (must be 3-regular)
+        let g6 = ret.to_g6();
+        let g = DenseGraph::from_g6(&g6);
+        let g62 = g.to_g6();
+        if g6 != g62 {
+            panic!("Invalid graph generated from scd code: g6 encoding mismatch {} vs {}", g6, g62);
+        }
+        let mut g_edges = g.edges.clone();
+        let mut ret_edges = ret.edges.clone();
+        g_edges.sort();
+        ret_edges.sort();
+        if g.adj != ret.adj || g.num_vertices != ret.num_vertices || g_edges != ret_edges {
+            println!("{:?}", g);
+            println!("{:?}", ret);
+
+            panic!("Invalid graph generated from scd code: g6={}, scd={:?}", g6, code);
+        }
+
+
+        ret
     }
 }
