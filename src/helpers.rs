@@ -431,3 +431,40 @@ pub fn load_scd_file(n_vertices : u8, filename: &str) -> std::io::Result<Vec<Str
 
     Ok(ret)
 }
+
+
+
+// looks for genreg files in data/genreg/ with the expected naming convention, and returns the list of filenames for the given number of loops and defect. 
+// Returns None if the file is missing.
+// Note that genreg files can have the form (XX=number of vertices, two digits like "07")
+// XX_3_3.scd
+// or in case of multi-part files 
+// XX_3_3#m.scd
+// with m=1,2,... the index of the part
+pub fn get_genreg_filenames(n_vertices :u8) -> Option<Vec<String>> {
+    // first check whether there is a single-part file
+    let fname_single = format!("data/genreg/{}{}_3_3.scd", n_vertices / 10, n_vertices % 10);
+    if std::path::Path::new(&fname_single).exists() {
+        return Some(vec![fname_single]);
+    }
+
+    // otherwise, look for first part of multi-part file
+    let fname_part = format!("data/genreg/{}{}_3_3#1.scd", n_vertices / 10, n_vertices % 10);
+    if !std::path::Path::new(&fname_part).exists() {
+        // multi-part file found. Now we have to count the number of part files present.
+        let mut ret = Vec::new();
+        ret.push(fname_part);
+        let mut cur_part = 2;
+        loop {
+            let fname_part = format!("data/genreg/{}{}_3_3#{}.scd", n_vertices / 10, n_vertices % 10, cur_part);
+            if std::path::Path::new(&fname_part).exists() {
+                ret.push(fname_part);
+                cur_part += 1;
+            } else {
+                break;
+            }
+        }
+        return Some(ret);
+    }
+    None
+}

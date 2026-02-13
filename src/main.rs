@@ -106,6 +106,14 @@ fn main() {
                 .action(clap::ArgAction::SetTrue)
         )
         .arg(
+            Arg::new("import")
+                .short('i')
+                .long("import")
+                .required(false)
+                .help("Imports .scd files from genreg instead of generating defect 0 plain graphs. Scd files are expected in data/genreg/, using genreg's default file naming convention.")
+                .action(clap::ArgAction::SetTrue)
+        )
+        .arg(
             Arg::new("test")
                 .long("test")
                 .required(false)
@@ -140,6 +148,7 @@ fn main() {
     let gen_matrices = *matches.get_one::<bool>("M").unwrap_or(&false);
     let use_triconnected = *matches.get_one::<bool>("3").unwrap_or(&false);
     let compress = *matches.get_one::<bool>("compress").unwrap_or(&false);
+    let import = *matches.get_one::<bool>("import").unwrap_or(&false);
 
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
     let n_loops_min: usize = *matches.get_one::<usize>("min_loops").expect("Invalid number of min loops");
@@ -187,11 +196,22 @@ fn main() {
                 }
 
                 if !gen_ref && !nobuild && !test{
-                    let start = std::time::Instant::now();
-                    println!("Generating graphs for {} loops and defect {}", n_loops, n_defect);
-                    generate_graphs(n_loops, n_defect, compress_level).unwrap();
-                    let duration = start.elapsed();
-                    println!("Time elapsed: {:?}", duration);
+                    // check if we should import genreg
+                    if import && n_defect == 0 {
+                        let start = std::time::Instant::now();
+                        println!("Importing graphs from genreg for {} loops and defect {}", n_loops, n_defect);
+                        import_genreg_graphs(n_loops, compress_level).unwrap();
+                        let duration = start.elapsed();
+                        println!("Time elapsed: {:?}", duration);
+                        continue;
+                    } else {
+                        // normal plain graph generation
+                        let start = std::time::Instant::now();
+                        println!("Generating graphs for {} loops and defect {}", n_loops, n_defect);
+                        generate_graphs(n_loops, n_defect, compress_level).unwrap();
+                        let duration = start.elapsed();
+                        println!("Time elapsed: {:?}", duration);
+                    }
                 }
 
             } else { // mode == "even" or "odd"

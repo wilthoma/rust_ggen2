@@ -423,7 +423,7 @@ pub fn plain_filename(l: usize, d: usize) -> String {
     format!("data/graphs{}_{}.g6", l, d)
 }
 
-pub fn generate_graphs(g : usize, d : usize, compression_level: CompressionLevel) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_graphs(g : usize, d : usize, compression_level: i32) -> Result<(), Box<dyn std::error::Error>> {
     // d is the defect
     println!("Generating graphs with genus {} and defect {}...", g, d);
 
@@ -664,6 +664,26 @@ pub fn generate_graphs(g : usize, d : usize, compression_level: CompressionLevel
     }
 
     Ok(())
+}
+
+// imports genreg graphs in defect 0 with g loops
+pub fn import_genreg_graphs(g : usize, compression_level: i32) -> Result<(), Box<dyn std::error::Error>> {
+    let n_vertices = (2*g-2) as u8;
+    let out_filename = plain_filename(g, 0);
+    if let Some(genreg_files) = get_genreg_filenames(n_vertices) {
+        // read all genreg files and combine into one g6 file
+        let mut g6_list = Vec::new();
+        for filename in genreg_files {
+            let g6s = load_scd_file(n_vertices, &filename)?;
+            g6_list.extend(g6s);
+        }
+        save_g6_file(&g6_list, &out_filename, compression_level)?;
+        Ok(())
+    } else {
+        // report and return an error
+        println!("Error: No genreg files found for n = {}. Please generate them using genreg and place them in the data/genreg directory with the correct naming convention.", n_vertices);
+        return Err(Box::new(io::Error::new(io::ErrorKind::NotFound, "Genreg files not found")));
+    }
 }
 
 pub fn compare_file_to_ref(l : usize, d : usize) -> Result<(), Box<dyn Error>>{
