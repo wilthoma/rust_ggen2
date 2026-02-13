@@ -1,9 +1,13 @@
+use core::num;
 // use rand::seq::SliceRandom;
 // use rand::{Rng, SeedableRng};
 use std::time::Instant;
-use std::io::BufRead;
 use std::collections::BTreeMap;
 use crate::helpers::*;
+
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+
 type HashType = usize;
 
 type GraphScore = Vec<u64>;
@@ -564,4 +568,31 @@ impl DenseGraph {
         }
     }
 
+    // create a Densegraph from an scd code. The scd code encodes a 3-regular graph, 
+    // with the first three bytes the neighbors of vertex 0, followed
+    // by the neighbors of vertex 1 etc.
+    // Also note that scd uses 1-based indexing for vertices, so we need to subtract 1 from each neighbor index.
+    // The code must have length 3n/2, where n is the number of vertices, and n must be even.
+    pub fn from_scd_code(code : &[u8]) -> DenseGraph {
+        let num_vertices = (2*code.len()/3) as u8;
+        let num_edges = code.len() as u8; // 3 edges per vertex, but each edge is counted twice
+        assert!(3*num_vertices as usize == 2*code.len());
+
+        let mut edges = Vec::with_capacity(num_edges as usize);
+        let mut cur_vertex = 0u8;
+        let mut nb_counters = vec![0u8; num_vertices as usize]; // number of neighbors found for each vertex
+        for (i, &neighbor) in code.iter().enumerate() {
+            let neighbor = neighbor - 1; // convert from 1-based to 0-based indexing
+            if neighbor >= num_vertices {
+                panic!("Invalid neighbor index: {}", neighbor);
+            }
+            edges.push((cur_vertex, neighbor));
+            nb_counters[cur_vertex as usize] += 1;
+            nb_counters[neighbor as usize] += 1;
+            if nb_counters[cur_vertex as usize] == 3 {
+                cur_vertex += 1;
+            }
+        }
+        DenseGraph::new(num_vertices, edges)
+    }
 }

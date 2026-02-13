@@ -2,11 +2,13 @@
 
 use core::num;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Write;
 use rustc_hash::FxHashMap;
 use rayon::prelude::*;
+
+use crate::densegraph::DenseGraph;
 
 pub const ZSTD_EXTENSION: &str = ".zst";
 
@@ -376,4 +378,56 @@ pub fn get_progress_bar_style() -> ProgressStyle {
     )
     .unwrap()
     .progress_chars("#>-")
+}
+
+fn read_u8<R: Read>(r: &mut R) -> std::io::Result<Option<u8>> {
+    let mut b = [0u8; 1];
+    match r.read_exact(&mut b) {
+        Ok(()) => Ok(Some(b[0])),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+// loads the scd file, and returns a list of g6 strings
+pub fn load_scd_file(n_vertices : u8, filename: &str) -> std::io::Result<Vec<String>> {
+    // n_vertices must be even
+    assert!(n_vertices % 2 == 0);
+    let n_edges = 3 * n_vertices as usize / 2;
+
+    println!("Loading scd file: {}...", filename);
+    let file = File::open(&filename).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("Failed to open {:?}: {}", filename, e),
+        )
+    })?;
+
+    let mut r = BufReader::with_capacity(BUF_SIZE, file);
+    let mut code = vec![0u8; n_edges];
+    let mut ret = Vec::new();
+    
+
+    loop {
+        // the number of bytes shared with previous code
+        let samebytes = match read_u8(&mut r)? {
+            None => break, // clean EOF
+            Some(b) => b as usize,
+        };
+        if samebytes > n_edges {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("samebytes={} > n_edges={} (corrupt file?)", samebytes, n_edges),
+            ));
+        }
+        let readbytes = n_edges - samebytes;
+        if readbytes > 0 {
+            r.read_exact(&mut code[samebytes..])?;
+        }
+        let g6 = DenseGraph::from_scd_code(&code).to_g6();
+        ret.push(g6);
+    }
+    println!("Loaded {} graphs from scd file.", ret.len());
+
+    Ok(ret)
 }
