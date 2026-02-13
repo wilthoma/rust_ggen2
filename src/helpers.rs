@@ -3,7 +3,7 @@
 use core::num;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use std::io::Write;
 use rustc_hash::FxHashMap;
 use rayon::prelude::*;
@@ -424,10 +424,14 @@ pub fn load_scd_file(n_vertices : u8, filename: &str) -> std::io::Result<Vec<Str
         if readbytes > 0 {
             r.read_exact(&mut code[samebytes..])?;
         }
-        let g6 = DenseGraph::from_scd_code(&code).to_g6();
+        let g6 = DenseGraph::from_scd_code(&code).to_g6(); // don't canonize for now
+        // let g6 = DenseGraph::from_scd_code(&code).to_canon_g6();
         ret.push(g6);
     }
     println!("Loaded {} graphs from scd file.", ret.len());
+    // let s_ret = ret.into_par_iter()
+    //     .progress_with_style(get_progress_bar_style())
+    //     .map(|g| g.to_canon_g6()).collect();
 
     Ok(ret)
 }
@@ -450,7 +454,7 @@ pub fn get_genreg_filenames(n_vertices :u8) -> Option<Vec<String>> {
 
     // otherwise, look for first part of multi-part file
     let fname_part = format!("data/genreg/{}{}_3_3#1.scd", n_vertices / 10, n_vertices % 10);
-    if !std::path::Path::new(&fname_part).exists() {
+    if std::path::Path::new(&fname_part).exists() {
         // multi-part file found. Now we have to count the number of part files present.
         let mut ret = Vec::new();
         ret.push(fname_part);

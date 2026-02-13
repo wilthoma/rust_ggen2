@@ -149,6 +149,11 @@ impl DenseGraph {
     }
 
 
+    pub fn to_canon_g6(&self) -> String {
+        let (canon, _) = self.canonical_label();
+        canon.to_g6()
+    }
+
     #[inline(always)]
     pub fn canonical_label(&self) -> (DenseGraph, Vec<u8>) {
         let (g, pp) = self.canonical_labels();
