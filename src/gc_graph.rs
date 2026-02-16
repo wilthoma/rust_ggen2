@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader};
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use std::io::Write;
 use crate::densegraph::DenseGraph;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use rayon::prelude::*;
 use crate::helpers::*;
 
@@ -324,6 +324,36 @@ impl Graph {
         image
     }
 
+
+    fn contract_edge_with_sign(&self, eidx: usize, even_edges: bool) -> Option<(Graph, i32)> {
+        // let mut image = Vec::new();
+        let i = eidx;
+        // for i in 0..self.edges.len() {
+            let Edge { u, v, .. } = self.edges[i];
+            let pp = permute_to_left(u, v, self.num_vertices);
+            let mut sgn = self.perm_sign(&pp, even_edges);
+            let mut g1 : Graph = self.clone();
+            g1.relabel(&pp);
+            g1.number_edges();
+            let prev_size = g1.edges.len();
+            g1 = g1.contract_edge(0);
+            if prev_size - g1.edges.len() != 1 {
+                return None;
+            }
+            if !even_edges {
+                let mut p = Vec::new();
+                g1.sort_edges();
+                for e in &g1.edges {
+                    p.push(e.data - 1);
+                }
+                sgn *= permutation_sign(&p);
+            } else {
+                sgn *= -1;
+            }
+            return Some((g1, sgn));
+        // }
+    }
+
     fn check_valid(&self, defect: usize, err_msg: &str) -> bool {
         // check whether all vertex indices are < num_vertices
         for e in &self.edges {
@@ -519,6 +549,94 @@ impl Graph {
         (canon.to_g6(), sign)
     }
 
+    fn edge_flips_with_sign(&self, eidx: usize, even_edges: bool) -> Vec<(Graph, i32)> {
+        let mut ret = Vec::new();
+        let Edge { u, v, .. } = self.edges[eidx];
+
+        // build the two graphs obtained by detaching the first edge from u and the i-th edge from v
+        // and reattaching them in the other way around. The sign is obtained by the permutation that sends the first graph to the second one,
+        // in the cacnonical ordering of edges
+
+        let pp = permute_to_left(u, v, self.num_vertices);
+        let mut sgn = self.perm_sign(&pp, even_edges);
+        let mut g1 : Graph = self.clone();
+        g1.relabel(&pp);
+        g1.number_edges();
+        let prev_size = g1.edges.len();
+        // the first edge is now (0,1).
+        // let Edge { u: u1, v: v1, data: d1 } = g1.edges[1];
+        // let Edge { u: u2, v: v2, data: d2 } = g1.edges[2];
+        // let Edge { u: u3, v: v3, data: d3 } = g1.edges[3];
+
+        let mut g2 = g1.clone();
+
+        // swap
+        g1.edges[1].u = 1; 
+        g1.edges[3].u = 0;
+        g2.edges[1].u = 1; 
+        g2.edges[4].u = 0;
+        if !even_edges {
+            let mut p = Vec::new();
+            g1.sort_edges();
+            for e in &g1.edges {
+                p.push(e.data - 1);
+            }
+            ret.push((g1, sgn * permutation_sign(&p)));
+            let mut p2 = Vec::new();
+            g2.sort_edges();
+            for e in &g2.edges {
+                p2.push(e.data - 1);
+            }
+            ret.push((g2, sgn * permutation_sign(&p2)));
+        } else {
+            // not implemented
+            panic!("Not implemented for even edges");
+        }
+
+        ret
+    }
+
+    fn is_pruneable_edge(&self, eidx: usize, valid_graphs: FxHashSet<String>, even_edges: bool) -> bool {
+        // conditions for 1-pruneable are: The given edge e=(u,v) is such that 
+        // 1) contracting the edge is possible and gives a nonzero graph
+        // 2) no other graph in the basis has this contraction.
+        //    the two other such candidate graphs are obtained by permuting the edges incident at (u,v)
+
+        // first check that contracting the edge gives a nonzero graph
+        if let Some((g1, sgn1)) = self.contract_edge_with_sign(eidx, even_edges)
+        {
+            if g1.has_odd_automorphism(even_edges) {
+                return false;
+            }
+
+            // now produce the other two graphs
+
+            return false;
+        } else {
+            return false;
+        }
+
+    }
+
+    fn is_pruneable(&self, valid_graphs: FxHashSet<String>, even_edges: bool) -> bool {
+        // checks whether the graph is one-pruneable.
+        // currently only implemented for 3-regular graphs with odd edges.
+        assert_eq!(self.edges.len(), 3 * self.num_vertices as usize / 2);
+
+        // conditions for 1-pruneable are: There exists an edge e=(u,v), such that 
+        // 1) contracting the edge is possible and gives a nonzero graph
+        // 2) no other graph in the basis has this contraction.
+        //    the two other such candidate graphs are obtained by permuting the edges incident at (u,v)
+
+        // check if any edge is pruneable
+        for eidx in 0..self.edges.len() {
+            if self.is_pruneable_edge(eidx, valid_graphs.clone()) {
+                return true;
+            }
+        }
+        false
+    }
+
 }
 
 fn get_type_string(even_edges: bool) -> String {
@@ -557,6 +675,24 @@ impl OrdinaryGVS {
         } else {
             format!(
                 "data/ordinary/{}/gra{}_{}.g6",
+                get_type_string(self.even_edges),
+                self.num_vertices,
+                self.num_loops
+            )
+        }
+    }
+
+    pub fn get_pruned_basis_file_path(&self) -> String {
+        if self.use_triconnected {
+            format!(
+                "data/ordinary/tri/{}/gra_pruned{}_{}.g6",
+                get_type_string(self.even_edges),
+                self.num_vertices,
+                self.num_loops
+            )
+        } else {
+            format!(
+                "data/ordinary/{}/gra_pruned{}_{}.g6",
                 get_type_string(self.even_edges),
                 self.num_vertices,
                 self.num_loops
@@ -646,6 +782,30 @@ impl OrdinaryGVS {
         save_g6_file(&out_g6s, &basis_path, compression_level)?;
 
         println!("Done.");
+
+        Ok(())
+    }
+
+    pub fn prune_basis(&self, ignore_existing_files: bool, compression_level: i32) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.is_valid() {
+            return Ok(());
+        }
+
+        let basis_in = self.get_basis_file_path();
+        let basis_out = self.get_pruned_basis_file_path();
+        if !ignore_existing_files && std::path::Path::new(&basis_out).exists() {
+            println!("Pruned basis file already exists: {}", basis_out);
+            return Ok(());
+        }
+        if !std::path::Path::new(&basis_in).exists() {
+            println!("Basis file does not exist for pruning: {}", basis_in);
+            return Err( "Basis file does not exist for pruning".into());
+        }
+
+        let in_g6s = load_g6_file(&basis_in)?;
+        let num_graphs = in_g6s.len();
+
+
 
         Ok(())
     }
