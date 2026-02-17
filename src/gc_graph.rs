@@ -6,9 +6,98 @@ use crate::densegraph::DenseGraph;
 use rustc_hash::{FxHashMap, FxHashSet};
 use rayon::prelude::*;
 use crate::helpers::*;
+use std::time::Instant;
 
+// use hashbrown::HashSet;
+// use rustc_hash::FxBuildHasher;
 
+pub type FxHashSetHB<T> = FxHashSet<T>; //HashSet<T, FxBuildHasher>;
 
+// f determines whether to keep an element. 
+// The set is mutated in-place by removing elements for which f returns false. 
+//The function f can query membership in the original set, but should not mutate it.
+// the function returns the number of removed elements. The implementation is optimized for the case where only a small fraction of the elements are removed, by first collecting the elements to remove in a separate vector and then removing them from the set in a second phase.
+// pub fn filter_in_place_by_removing<T>(
+//     x: &mut FxHashSetHB<T>,
+//     f: impl Sync + Fn(&T, &FxHashSetHB<T>) -> bool,
+// ) -> usize
+// where
+//     T: Sync + Send + Eq + std::hash::Hash + Clone,
+// {
+//     // Immutable snapshot for membership queries during phase 1
+//     let x_ref: &FxHashSetHB<T> = &*x;
+//     let total = x.len() as u64;
+
+//     // Expect small removal set: 1–10% of |X|
+//     // let est_remove = (x.len() / 20).max(1024); // tune: assumes ~5% removed
+//     let to_remove: Vec<T> = x_ref
+//         .par_iter()
+//         .progress_count(total)
+//         .progress_with_style(get_progress_bar_style())
+//         .filter_map(|item| {
+//             if !f(item, x_ref) {
+//                 Some(item.clone())
+//             } else {
+//                 None
+//             }
+//         })
+//         .collect();
+
+//     let num_removed = to_remove.len();
+//     // Phase 2: mutate
+//     for k in to_remove {
+//         x.remove(&k);
+//     }
+//     num_removed
+// }
+pub fn filter_in_place_by_removing<T>(
+    x: &mut FxHashSetHB<T>,
+    f: impl Sync + Fn(&T, &FxHashSetHB<T>) -> bool,
+) -> usize
+where
+    T: Sync + Send + Eq + std::hash::Hash + Clone,
+{
+    // Immutable snapshot for membership queries during phase 1
+    let x_ref: &FxHashSetHB<T> = &*x;
+    let pb = get_progress_bar(x.len());
+    // pb.set_draw_delta(50_000); // tune: update progress bar every 50k items
+
+    // Expect small removal set: 1–10% of |X|
+    let est_remove = (x.len() / 20).max(1024); // tune: assumes ~5% removed
+    let to_remove: Vec<T> = x_ref
+        .par_iter()
+        .fold(
+            || (Vec::with_capacity(est_remove / rayon::current_num_threads().max(1)), 0u64),
+            |(mut acc, mut ctr), item| {
+                if !f(item, x_ref) {
+                    acc.push(item.clone());
+                }
+                ctr += 1;
+                if ctr == 4096 {
+                    pb.inc(ctr);
+                    ctr = 0;
+                }
+                (acc, ctr)
+            },
+        )
+        .map(|(out, leftover)| {
+            if leftover != 0 {
+                pb.inc(leftover);
+            }
+            out
+        })
+        .reduce(Vec::new, |mut a, mut b| {
+            a.append(&mut b);
+            a
+        });
+
+    let num_removed = to_remove.len();
+    // Phase 2: mutate
+    for k in to_remove {
+        x.remove(&k);
+    }
+    num_removed
+}
 
 #[derive(Debug, Clone, Copy)]
 struct Edge {
@@ -596,7 +685,7 @@ impl Graph {
         ret
     }
 
-    fn is_pruneable_edge(&self, eidx: usize, valid_graphs: FxHashSet<String>, even_edges: bool) -> bool {
+    fn is_pruneable_edge(&self, eidx: usize, valid_graphs: &FxHashSet<String>, even_edges: bool) -> bool {
         // conditions for 1-pruneable are: The given edge e=(u,v) is such that 
         // 1) contracting the edge is possible and gives a nonzero graph
         // 2) no other graph in the basis has this contraction.
@@ -610,15 +699,23 @@ impl Graph {
             }
 
             // now produce the other two graphs
-
-            return false;
+            let swaps = self.edge_flips_with_sign(eidx, even_edges);
+            let mut found = 0;
+            let g6 = self.to_canon_g6();
+            for (g2, sgn2) in swaps {
+                let g2_g6 = g2.to_canon_g6();
+                if g2_g6 != g6 && valid_graphs.contains(&g2_g6) {
+                    found += 1;
+                }
+            }
+            return found == 0;
         } else {
             return false;
         }
 
     }
 
-    fn is_pruneable(&self, valid_graphs: FxHashSet<String>, even_edges: bool) -> bool {
+    fn is_pruneable(&self, valid_graphs: &FxHashSet<String>, even_edges: bool) -> bool {
         // checks whether the graph is one-pruneable.
         // currently only implemented for 3-regular graphs with odd edges.
         assert_eq!(self.edges.len(), 3 * self.num_vertices as usize / 2);
@@ -630,7 +727,7 @@ impl Graph {
 
         // check if any edge is pruneable
         for eidx in 0..self.edges.len() {
-            if self.is_pruneable_edge(eidx, valid_graphs.clone()) {
+            if self.is_pruneable_edge(eidx, valid_graphs, even_edges) {
                 return true;
             }
         }
@@ -802,11 +899,39 @@ impl OrdinaryGVS {
             return Err( "Basis file does not exist for pruning".into());
         }
 
-        let in_g6s = load_g6_file(&basis_in)?;
-        let num_graphs = in_g6s.len();
+        let mut g6s = load_g6_file(&basis_in)?;
+        let num_graphs = g6s.len();
+        let mut cur_num_graphs = num_graphs;
 
+        println!("Building set of valid graphs for pruning...");
+        let start = Instant::now();
+        let mut g6_set = g6s.par_iter().cloned().collect::<FxHashSet<String>>();
+        println!("Done building set of valid graphs. Time taken: {:.2?}", start.elapsed());
+        let mut cur_round =0;
 
-
+        loop {
+            
+            println!("Pruning basis for {} in round {}. Original size: {}, Current size: {}...", self.to_string(), cur_round, num_graphs, cur_num_graphs);
+            // remove all pruneable strings from g6s
+            let n_removed = filter_in_place_by_removing(&mut g6_set, 
+                |g6, validset| {
+                    let g = Graph::from_g6(g6);
+                    !g.is_pruneable(validset, self.even_edges)
+            });
+            println!("Done. Removed {} graphs. New size: {}.", n_removed, g6_set.len());
+            if n_removed == 0 {
+                break;
+            }
+            cur_num_graphs = g6_set.len();
+            cur_round += 1;
+        }
+        println!("Pruning complete. Final size: {}. Writing to {}...", g6_set.len(), basis_out);
+        let mut out_g6s: Vec<String> = g6_set.into_iter().collect();
+        let start = Instant::now();
+        out_g6s.par_sort();
+        println!("Done sorting pruned basis. Time taken: {:.2?}", start.elapsed());
+        save_g6_file(&out_g6s, &basis_out, compression_level)?;
+        
         Ok(())
     }
 

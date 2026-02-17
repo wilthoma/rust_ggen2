@@ -26,8 +26,8 @@ fn main() {
         .after_help("EXAMPLES:\n    cargo run --release -- plain 1 3 0 2\n    cargo run --release -- even 2 4 1 3 --compress\n    cargo run --release -- odd 1 2 0 1 -t 8")
         .arg(
             Arg::new("mode")
-            .help("Graph generation mode: plain, even, odd, alltest (which runs all tests in sequence) or allclean (deletes all generated files).")
-            .value_parser(["plain", "even", "odd", "alltest", "allclean"])
+            .help("Graph generation mode: plain, even, odd, oddprune, alltest (which runs all tests in sequence) or allclean (deletes all generated files).")
+            .value_parser(["plain", "even", "odd", "alltest", "allclean", "oddprune"])
             .required(true)
             .index(1),
         )
@@ -176,6 +176,23 @@ fn main() {
         return;
     }
 
+    if mode == "oddprune" {
+        println!("Generating odd pruned basis graphs for loops in {}..={} and defect 0 (defect ignored for now)", n_loops_min, n_loops_max);
+        let n_defect = 0; // for now we ignore the defect since we don't have the necessary basis files for nonzero defect
+        for n_loops in n_loops_min..=n_loops_max {
+            if !is_satisfiable(n_loops, n_defect) {
+                continue;
+            }
+            let n_vertices = 2 * n_loops - 2 - n_defect;
+            let OGC = OrdinaryGVS::new(n_vertices as u8, n_loops as u8, false, use_triconnected);
+            let start = std::time::Instant::now();
+            println!("Generating odd pruneable graphs for {} loops and defect {}", n_loops, n_defect);
+            OGC.prune_basis(overwrite, compress_level).expect("Build odd pruneable basis failed");
+            let duration = start.elapsed();
+            println!("Time elapsed: {:?}", duration);
+        }
+        return;
+    }
 
     for n_loops in n_loops_min..=n_loops_max {
         for n_defect in n_defect_min..=n_defect_max {
